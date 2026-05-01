@@ -34,6 +34,7 @@ func root() *cobra.Command {
 	c.AddCommand(
 		programStackListCmd,
 		collectionStackListCmd,
+		versionCommand(),
 	)
 
 	return c

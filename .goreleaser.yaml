@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+# See https://goreleaser.com/customization/ for config options.
+
+version: 2
+
+project_name: stackwhere
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}" # set mod timestamp to commit timestamp for reproducible builds
+
+builds:
+  - main: ./cmd/stackwhere
+    env:
+      - CGO_ENABLED=0 # disable CGO for static binaries
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    ldflags:
+      - -s -w # strip debug info and symbol table for smaller binaries
+      - -X main.version={{.RawVersion}} # pass version to the binary
+      - -X main.commit={{.FullCommit}}  # pass commit hash to the binary
+      - -X main.date={{.CommitDate}}    # pass commit date to the binary
+    mod_timestamp: "{{ .CommitTimestamp }}" # set mod timestamp to commit timestamp for reproducible builds
+
+release:
+  github:
+    owner: cilium
+    name: stackwhere
+  draft: true
+  make_latest: true
+
+changelog:
+  use: github-native
