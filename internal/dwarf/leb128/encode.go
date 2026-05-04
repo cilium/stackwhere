@@ -16,7 +16,7 @@ func EncodeUnsigned(out io.ByteWriter, x uint64) {
 		if x != 0 {
 			b = b | 0x80
 		}
-		out.WriteByte(b)
+		_ = out.WriteByte(b)
 		if x == 0 {
 			break
 		}
@@ -37,7 +37,7 @@ func EncodeSigned(out io.ByteWriter, x int64) {
 		} else {
 			b = b | 0x80
 		}
-		out.WriteByte(b)
+		_ = out.WriteByte(b)
 
 		if last {
 			break

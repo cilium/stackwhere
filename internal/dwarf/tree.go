@@ -18,7 +18,9 @@ func NewDWARFTree(path string) (*Tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer r.Close()
+	defer func() {
+		_ = r.Close()
+	}()
 	return newDWARFTreeReader(r)
 }
 
@@ -139,7 +141,8 @@ func (n *Node) Dump(indent int) {
 	fmt.Printf("%s%#x: %s\n", strings.Repeat(" ", indent), n.Entry().Offset, n.Entry().Tag)
 	for _, attr := range n.Entry().Field {
 		if attr.Attr == dwarf.AttrLocation {
-			if attr.Class == dwarf.ClassExprLoc {
+			switch attr.Class {
+			case dwarf.ClassExprLoc:
 				ops, err := n.Location()
 				if err != nil {
 					fmt.Printf("%s %s: <invalid location expression: %v>\n", strings.Repeat(" ", indent), attr.Attr, err)
@@ -149,7 +152,7 @@ func (n *Node) Dump(indent int) {
 						fmt.Printf("%s    %s\n", strings.Repeat(" ", indent), op)
 					}
 				}
-			} else if attr.Class == dwarf.ClassLocList {
+			case dwarf.ClassLocList:
 				loclist, err := n.LocationList()
 				if err != nil {
 					fmt.Printf("%s %s: <invalid location list: %v>\n", strings.Repeat(" ", indent), attr.Attr, err)
