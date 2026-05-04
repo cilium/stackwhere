@@ -6,6 +6,26 @@ In BPF, every byte of stack usage counts, the verifier limits us to 512 bytes of
 
 ## Installation
 
+### Release binary
+
+1. Go to https://github.com/cilium/stackwhere/releases and find the latest stable release.
+2. Download the binary for your OS and CPU architecture.
+3. Unpack the .tar.gz archive and move binary to permanent directory
+
+#### Example on Linux AMD64
+
+```bash
+wget https://github.com/cilium/stackwhere/releases/download/v0.1.0/stackwhere_0.1.0_linux_amd64.tar.gz
+
+# Optional, verify checksum
+wget https://github.com/cilium/stackwhere/releases/download/v0.1.0/stackwhere_0.1.0_checksums.txt
+sha256sum -c stackwhere_0.1.0_checksums.txt --ignore-missing
+# Should say: stackwhere_0.1.0_linux_amd64.tar.gz: OK
+
+tar -xzf stackwhere_0.1.0_linux_amd64.tar.gz
+sudo mv stackwhere /usr/bin/stackwhere
+```
+
 ### Go install
 
 Install the latest version by running `go install github.com/cilium/stackwhere/cmd/stackwhere@latest`.
