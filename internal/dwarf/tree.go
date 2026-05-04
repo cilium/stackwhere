@@ -18,9 +18,7 @@ func NewDWARFTree(path string) (*Tree, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer func() {
-		_ = r.Close()
-	}()
+	r.Close()
 	return newDWARFTreeReader(r)
 }
 
