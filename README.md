@@ -38,7 +38,7 @@ be stripped.
 ### Inspecting collections
 
 The `list` (alias `l`) sub-command lists the peak stack usage for each program / function in the given
-only a object file.
+object file.
 
 ```
 $ stackwhere list {path to .o}
