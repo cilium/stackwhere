@@ -11,14 +11,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func programStackListCommand() *cobra.Command {
+func listCommand() *cobra.Command {
 	c := &cobra.Command{
-		Use:     "program {collection} {program}",
-		Aliases: []string{"prog", "p"},
-		Short:   "Prints the program stack listing for a given program.",
-		Long:    "Prints the program stack listing for a given program.",
-		Example: "stackwhere program /path/to/collection.o my_program",
-		Args:    cobra.ExactArgs(2),
+		Use:     "list {collection} [program]",
+		Aliases: []string{"l"},
+		Short:   "Prints the stack usage of all programs, or the stack listing of a specific program.",
+		Long:    "Prints the stack usage of all programs, or the stack listing of a specific program.",
+		Example: "stackwhere list /path/to/collection.o my_program",
+		Args:    cobra.RangeArgs(1, 2),
 	}
 
 	flags := c.Flags()
@@ -35,6 +35,14 @@ type programStackList struct {
 }
 
 func (psl *programStackList) runE(cmd *cobra.Command, args []string) error {
+	if len(args) == 1 {
+		return psl.runListCollection(cmd, args)
+	}
+
+	return psl.runListProgram(cmd, args)
+}
+
+func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) error {
 	collectionPath := args[0]
 	functionName := args[1]
 
@@ -205,4 +213,92 @@ func stackOffsets(n *dwarf.Node) []int64 {
 
 	slices.Sort(offsets)
 	return slices.Compact(offsets)
+}
+
+func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string) error {
+	collectionPath := args[0]
+
+	tree, err := dwarf.NewDWARFTree(collectionPath)
+	if err != nil {
+		return fmt.Errorf("failed to parse DWARF data: %w", err)
+	}
+
+	stackUsagePerProgram := map[string]int64{}
+	for _, prog := range tree.ByType(dwarf.TagSubprogram) {
+		if !isBPFProgram(prog) {
+			continue
+		}
+
+		stackUsagePerProgram[prog.Name()] = getProgramStackUsage(prog)
+	}
+
+	// Sort by stack usage, largest first, and then by name, and print.
+	keys := slices.Collect(maps.Keys(stackUsagePerProgram))
+	slices.SortFunc(keys, func(a, b string) int {
+		return int(stackUsagePerProgram[b] - stackUsagePerProgram[a])
+	})
+	for _, prog := range keys {
+		fmt.Printf("%3d bytes - %s\n", stackUsagePerProgram[prog], prog)
+	}
+
+	return nil
+}
+
+func getProgramStackUsage(prog *dwarf.Node) int64 {
+	largestOffset := int64(0)
+	lastSize := int64(0)
+	dwarf.VisitPrefixOrder(prog, func(n *dwarf.Node) {
+		// Only consider variables and function parameters since those are the things that can be stored on the stack.
+		if n.Entry().Tag != dwarf.TagVariable && n.Entry().Tag != dwarf.TagFormalParameter {
+			return
+		}
+
+		// Find all stack offsets used by this variable.
+		offsets := stackOffsets(n)
+		if len(offsets) == 0 {
+			return
+		}
+
+		// If this was the largest stack offset we've seen so far, then the total stack usage must be at least
+		// large enough to fit this variable. If this variable has the same largest offset as a previous variable,
+		// but is larger than that previous variable, then the total stack usage must be increased to fit this variable.
+		sz := n.ByteSize()
+		for _, offset := range offsets {
+			if offset > largestOffset {
+				largestOffset = offset
+				lastSize = sz
+			}
+			if offset == largestOffset && sz > lastSize {
+				lastSize = sz
+			}
+		}
+	})
+
+	// Stack usage is always a multiple of 8 bytes, so round up to the nearest multiple of 8.
+	stackUsage := largestOffset + lastSize
+	if stackUsage%8 != 0 {
+		stackUsage = ((stackUsage / 8) + 1) * 8
+	}
+
+	return stackUsage
+}
+
+func isBPFProgram(n *dwarf.Node) bool {
+	if n.Entry().Tag != dwarf.TagSubprogram {
+		return false
+	}
+
+	if n.Entry().Val(dwarf.AttrName) == nil {
+		return false
+	}
+
+	if n.Entry().Val(dwarf.AttrInline) != nil {
+		return false
+	}
+
+	if n.Entry().Val(dwarf.AttrType) == nil {
+		return false
+	}
+
+	return true
 }
