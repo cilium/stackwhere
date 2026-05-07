@@ -37,11 +37,11 @@ be stripped.
 
 ### Inspecting collections
 
-The `collection` (alias `coll`/`c`) sub-command lists the peak stack usage for each program / function in the given
-object file.
+The `list` (alias `l`) sub-command lists the peak stack usage for each program / function in the given
+only a object file.
 
 ```
-$ stackwhere collection {path to .o}
+$ stackwhere list {path to .o}
 128 bytes - my_example_program
  80 bytes - my_other_program
  20 bytes - small_function
@@ -49,10 +49,11 @@ $ stackwhere collection {path to .o}
 
 ### Inspecting programs
 
-The `program` (alias `prog`/`p`) sub-command lists the stack usage of a single program / function.
+The `list` (alias `l`) sub-command lists a detailed per program listing when a program name is specified as the second
+argument.
 
 ```
-$ stackwhere program {path to .o} {name of program}
+$ stackwhere list {path to .o} {name of program}
 R10-16:
   8 - example_var1 @ /some/path/to/your/sources/bpf.c:12
 R10-24:

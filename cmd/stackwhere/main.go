@@ -25,15 +25,11 @@ func root() *cobra.Command {
 		},
 	)
 
-	programStackListCmd := programStackListCommand()
-	programStackListCmd.GroupID = primaryGroupID
-
-	collectionStackListCmd := collectionStackListCommand()
-	collectionStackListCmd.GroupID = primaryGroupID
+	listCmd := listCommand()
+	listCmd.GroupID = primaryGroupID
 
 	c.AddCommand(
-		programStackListCmd,
-		collectionStackListCmd,
+		listCmd,
 		versionCommand(),
 	)
 
