@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Lint the codebase using golangci-lint
   golangci:
     name: lint
     runs-on: ubuntu-latest
@@ -22,3 +23,24 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11
+  # Run go test to ensure tests pass
+  gotest:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - name: go test
+        run: go test -v ./...
+  # Build testdata and check that no git changes are needed, to ensure testdata is up to date
+  testdata:
+    name: ensure-testdata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: build testdata
+        run: |
+          make -C testdata docker
+          test -z "$(git status testdata --porcelain)" || (echo "please run 'make -C testdata docker' and submit your changes"; exit 1)
