@@ -49,7 +49,7 @@ func TestGetStackSlotUsage(t *testing.T) {
 	for _, group := range slotGroups {
 		found := make(map[string]int64)
 		for _, slot := range stackUsage[group.index] {
-			found[slot.name] = slot.byteSize
+			found[slot.Name] = slot.ByteSize
 		}
 
 		// Check all expected slots are present with correct size

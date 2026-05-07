@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -52,13 +53,22 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 	}
 
 	usage := getStackSlotUsage(tree, functionName)
-	for _, slots := range usage {
-		fmt.Printf("R10-%d:\n", slots[0].offset)
-		for _, slot := range slots {
-			fmt.Printf("  %d - %s @ %s\n", slot.byteSize, slot.name, slot.fileCol)
-			if *psl.flagCallStack {
-				for _, entry := range slot.callstack {
-					fmt.Printf("    %s @ %s\n", entry.name, entry.fileCol)
+	if jsonOutput(cmd) {
+		e := json.NewEncoder(cmd.OutOrStdout())
+		e.SetIndent("", "  ")
+		if err := e.Encode(usage); err != nil {
+			return fmt.Errorf("failed to encode stack usage data to JSON: %w", err)
+		}
+		return nil
+	} else {
+		for _, slots := range usage {
+			fmt.Printf("R10-%d:\n", slots[0].Offset)
+			for _, slot := range slots {
+				fmt.Printf("  %d - %s @ %s\n", slot.ByteSize, slot.Name, slot.FileCol)
+				if *psl.flagCallStack {
+					for _, entry := range slot.Callstack {
+						fmt.Printf("    %s @ %s\n", entry.Name, entry.FileCol)
+					}
 				}
 			}
 		}
@@ -68,16 +78,16 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 }
 
 type slotUsage struct {
-	offset    int64
-	name      string
-	byteSize  int64
-	fileCol   string
-	callstack []callStackEntry
+	Offset    int64            `json:"offset"`
+	Name      string           `json:"name"`
+	ByteSize  int64            `json:"byte_size"`
+	FileCol   string           `json:"file_col"`
+	Callstack []callStackEntry `json:"callstack,omitempty"`
 }
 
 type callStackEntry struct {
-	name    string
-	fileCol string
+	Name    string `json:"name"`
+	FileCol string `json:"file_col"`
 }
 
 // getStackSlotUsage returns a list of stack slots used by the given function, sorted by their offset from R10 (largest offset first).
@@ -147,21 +157,21 @@ func getStackSlotUsage(tree *dwarf.Tree, functionName string) [][]slotUsage {
 						continue
 					}
 					callstack = append(callstack, callStackEntry{
-						name:    parent.Name(),
-						fileCol: parent.FileCol(),
+						Name:    parent.Name(),
+						FileCol: parent.FileCol(),
 					})
 				}
 
 				usage := []slotUsage{{
-					offset:    offset,
-					name:      n.Name(),
-					byteSize:  n.ByteSize(),
-					fileCol:   n.FileCol(),
-					callstack: callstack,
+					Offset:    offset,
+					Name:      n.Name(),
+					ByteSize:  n.ByteSize(),
+					FileCol:   n.FileCol(),
+					Callstack: callstack,
 				}}
 
 				i, found := slices.BinarySearchFunc(result, usage, func(a, b []slotUsage) int {
-					return int(a[0].offset - b[0].offset)
+					return int(a[0].Offset - b[0].Offset)
 				})
 				if found {
 					result[i] = append(result[i], usage...)
@@ -237,8 +247,31 @@ func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string
 	slices.SortFunc(keys, func(a, b string) int {
 		return int(stackUsagePerProgram[b] - stackUsagePerProgram[a])
 	})
+
+	type programStackUsage struct {
+		Name       string `json:"name"`
+		StackUsage int64  `json:"stack_usage"`
+	}
+
+	out := []programStackUsage{}
 	for _, prog := range keys {
-		fmt.Printf("%3d bytes - %s\n", stackUsagePerProgram[prog], prog)
+		out = append(out, programStackUsage{
+			Name:       prog,
+			StackUsage: stackUsagePerProgram[prog],
+		})
+	}
+
+	if jsonOutput(cmd) {
+		e := json.NewEncoder(cmd.OutOrStdout())
+		e.SetIndent("", "  ")
+		if err := e.Encode(out); err != nil {
+			return fmt.Errorf("failed to encode stack usage data to JSON: %w", err)
+		}
+		return nil
+	} else {
+		for _, prog := range keys {
+			fmt.Printf("%3d bytes - %s\n", stackUsagePerProgram[prog], prog)
+		}
 	}
 
 	return nil
