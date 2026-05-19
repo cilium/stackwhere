@@ -8,10 +8,16 @@ import (
 // the debug/dwarf package in those packages.
 
 var (
-	AttrLocation = dbgDwarf.AttrLocation
-	AttrName     = dbgDwarf.AttrName
-	AttrInline   = dbgDwarf.AttrInline
-	AttrType     = dbgDwarf.AttrType
+	AttrLocation   = dbgDwarf.AttrLocation
+	AttrName       = dbgDwarf.AttrName
+	AttrInline     = dbgDwarf.AttrInline
+	AttrType       = dbgDwarf.AttrType
+	AttrLowpc      = dbgDwarf.AttrLowpc
+	AttrHighpc     = dbgDwarf.AttrHighpc
+	AttrRanges     = dbgDwarf.AttrRanges
+	AttrCallFile   = dbgDwarf.AttrCallFile
+	AttrCallLine   = dbgDwarf.AttrCallLine
+	AttrCallColumn = dbgDwarf.AttrCallColumn
 )
 
 var (

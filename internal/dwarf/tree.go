@@ -40,7 +40,12 @@ func newDWARFTreeReader(fileReader io.ReaderAt) (*Tree, error) {
 		return nil, fmt.Errorf("failed to create loclist table: %w", err)
 	}
 
-	tree := newTree(llt)
+	rlt, err := NewRangeListTable(obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create range list table: %w", err)
+	}
+
+	tree := newTree(llt, rlt)
 	var cur *Node
 
 	r := dbg.Reader()
@@ -91,14 +96,16 @@ type Tree struct {
 
 	files []*dwarf.LineFile
 	llt   *LoclistTable
+	rlt   *RangeListTable
 }
 
-func newTree(llt *LoclistTable) *Tree {
+func newTree(llt *LoclistTable, rlt *RangeListTable) *Tree {
 	return &Tree{
 		index:  make(map[dwarf.Offset]*Node),
 		byType: make(map[dwarf.Tag][]*Node),
 		files:  nil,
 		llt:    llt,
+		rlt:    rlt,
 	}
 }
 
@@ -336,13 +343,40 @@ func (n *Node) Type() *Node {
 	return nil
 }
 
+func (n *Node) Ranges() (RangeListEntry, error) {
+	ranges := n.Entry().Val(dwarf.AttrRanges)
+	if ranges == nil {
+		// Fall back to the abstract origin when the concrete node has no ranges.
+		if abstractOrigin := n.AbstractOrigin(); abstractOrigin != nil {
+			return abstractOrigin.Ranges()
+		}
+		return RangeListEntry{}, nil
+	}
+
+	if n.tree.rlt == nil {
+		return RangeListEntry{}, fmt.Errorf("DW_AT_ranges present but no .debug_rnglists section")
+	}
+
+	rangesOffset, ok := ranges.(uint64)
+	if !ok {
+		return RangeListEntry{}, fmt.Errorf("unexpected type for DW_AT_ranges value: %T", ranges)
+	}
+
+	rangesEntry, ok := n.tree.rlt.entries[rangesOffset]
+	if !ok {
+		return RangeListEntry{}, fmt.Errorf("invalid ranges offset: %#x", rangesOffset)
+	}
+
+	return rangesEntry, nil
+}
+
 // Returns the file and line number of this entry, or an empty string if there is no file and line number.
-func (n *Node) FileCol() string {
+func (n *Node) FileLineCol() string {
 	fileIndex := n.Entry().Val(dwarf.AttrDeclFile)
 	if fileIndex == nil {
 		abstractOrigin := n.AbstractOrigin()
 		if abstractOrigin != nil {
-			return abstractOrigin.FileCol()
+			return abstractOrigin.FileLineCol()
 		}
 
 		return ""
@@ -357,6 +391,31 @@ func (n *Node) FileCol() string {
 		}
 
 		return fmt.Sprintf("%s:%d", file.Name, fileLine.(int64))
+	}
+
+	return file.Name
+}
+
+func (n *Node) CallFileLineCol() string {
+	callFileIndex := n.Entry().Val(dwarf.AttrCallFile)
+	if callFileIndex == nil {
+		abstractOrigin := n.AbstractOrigin()
+		if abstractOrigin != nil {
+			return abstractOrigin.CallFileLineCol()
+		}
+
+		return ""
+	}
+	file := n.tree.files[callFileIndex.(int64)]
+
+	callLine := n.Entry().Val(dwarf.AttrCallLine)
+	if callLine != nil {
+		callCol := n.Entry().Val(dwarf.AttrCallColumn)
+		if callCol != nil {
+			return fmt.Sprintf("%s:%d:%d", file.Name, callLine.(int64), callCol.(int64))
+		}
+
+		return fmt.Sprintf("%s:%d", file.Name, callLine.(int64))
 	}
 
 	return file.Name

@@ -18,7 +18,8 @@ docker:
 	$(CONTAINER_ENGINE) run --rm -v $(shell pwd):/src -w /src $(IMAGE):$(VERSION) make all
 
 TARGETS := \
-	basic
+	basic \
+	spill
 
 .PHONY: all
 all: $(addsuffix .o,$(TARGETS))
