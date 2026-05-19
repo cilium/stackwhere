@@ -175,6 +175,7 @@ func NewLoclistTable(f *elf.File) (*LoclistTable, error) {
 	}
 
 	if f.Class != elf.ELFCLASS64 {
+		// Code should work, but untested
 		return nil, fmt.Errorf("unexpected 32-bit ELF file")
 	}
 

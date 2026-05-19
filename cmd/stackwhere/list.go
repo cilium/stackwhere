@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/asm"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/stackwhere/internal/dwarf"
 	"github.com/cilium/stackwhere/internal/dwarf/op"
 	"github.com/spf13/cobra"
@@ -52,7 +55,76 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 		return fmt.Errorf("failed to parse DWARF data: %w", err)
 	}
 
-	usage := getStackSlotUsage(tree, functionName)
+	coll, err := ebpf.LoadCollectionSpec(collectionPath)
+	if err != nil {
+		return fmt.Errorf("failed to load eBPF collection: %w", err)
+	}
+
+	subProgsDwarf := tree.ByType(dwarf.TagSubprogram)
+	subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dwarf.Node) bool {
+		return n.Name() == functionName
+	})
+	if subProgDwarfIdx == -1 {
+		return fmt.Errorf("function %q not found in DWARF data", functionName)
+	}
+
+	subProgDwarf := subProgsDwarf[subProgDwarfIdx]
+	subProg := coll.Programs[functionName]
+	if subProg == nil {
+		return fmt.Errorf("function %q not found in eBPF collection", functionName)
+	}
+
+	usage := stackSlotsFromDWARFVars(subProgDwarf)
+	usage = append(usage, stackSlotsFromInsns(subProg, subProgDwarf)...)
+
+	// Sort outer array
+	slices.SortFunc(usage, func(a, b []slotUsage) int {
+		return int(a[0].Offset - b[0].Offset)
+	})
+	// Merge inner arrays with the same offset
+	for i := range slices.Backward(usage) {
+		if i == 0 {
+			break
+		}
+
+		if usage[i][0].Offset == usage[i-1][0].Offset {
+			usage[i-1] = append(usage[i-1], usage[i]...)
+			usage = slices.Delete(usage, i, i+1)
+		}
+	}
+	// Sort inner arrays by size, largest first, and then by name. And deduplicate.
+	for i := range usage {
+		slices.SortFunc(usage[i], func(a, b slotUsage) int {
+			sz := int(b.ByteSize - a.ByteSize)
+			if sz != 0 {
+				return sz
+			}
+
+			name := strings.Compare(a.Name, b.Name)
+			if name != 0 {
+				return name
+			}
+
+			return strings.Compare(a.FileLineCol, b.FileLineCol)
+		})
+
+		// Remove duplicates that can occur, for example when a function is inlined multiple times and it ends up reusing the same stack space.
+		usage[i] = slices.CompactFunc(usage[i], func(a, b slotUsage) bool {
+			callstackEqual := true
+			if len(a.Callstack) != len(b.Callstack) {
+				callstackEqual = false
+			} else {
+				for j := range a.Callstack {
+					if a.Callstack[j] != b.Callstack[j] {
+						callstackEqual = false
+						break
+					}
+				}
+			}
+			return a.Name == b.Name && a.ByteSize == b.ByteSize && a.FileLineCol == b.FileLineCol && callstackEqual
+		})
+	}
+
 	if jsonOutput(cmd) {
 		e := json.NewEncoder(cmd.OutOrStdout())
 		e.SetIndent("", "  ")
@@ -64,10 +136,20 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 		for _, slots := range usage {
 			fmt.Printf("R10-%d:\n", slots[0].Offset)
 			for _, slot := range slots {
-				fmt.Printf("  %d - %s @ %s\n", slot.ByteSize, slot.Name, slot.FileCol)
+				size := fmt.Sprintf("%d", slot.ByteSize)
+				if slot.ByteSize == -1 {
+					size = "?"
+				}
+
+				name := slot.Name
+				if name == "" {
+					name = "(unknown)"
+				}
+
+				fmt.Printf("  %s - %s @ %s\n", size, name, slot.FileLineCol)
 				if *psl.flagCallStack {
 					for _, entry := range slot.Callstack {
-						fmt.Printf("    %s @ %s\n", entry.Name, entry.FileCol)
+						fmt.Printf("    %s @ %s\n", entry.Name, entry.FileLineCol)
 					}
 				}
 			}
@@ -77,108 +159,107 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 	return nil
 }
 
+type slotList [][]slotUsage
+
+func (s slotList) Add(slot slotUsage) slotList {
+	i, found := slices.BinarySearchFunc(s, []slotUsage{slot}, func(a, b []slotUsage) int {
+		return int(a[0].Offset - b[0].Offset)
+	})
+	if found {
+		s[i] = append(s[i], slot)
+	} else {
+		s = slices.Insert(s, i, []slotUsage{slot})
+	}
+	return s
+}
+
 type slotUsage struct {
-	Offset    int64            `json:"offset"`
-	Name      string           `json:"name"`
-	ByteSize  int64            `json:"byte_size"`
-	FileCol   string           `json:"file_col"`
-	Callstack []callStackEntry `json:"callstack,omitempty"`
+	Offset      int64            `json:"offset"`
+	Name        string           `json:"name"`
+	ByteSize    int64            `json:"byte_size"`
+	FileLineCol string           `json:"file_line_col"`
+	Callstack   []callStackEntry `json:"callstack,omitempty"`
 }
 
 type callStackEntry struct {
-	Name    string `json:"name"`
-	FileCol string `json:"file_col"`
+	Name        string `json:"name"`
+	FileLineCol string `json:"file_line_col"`
 }
 
-// getStackSlotUsage returns a list of stack slots used by the given function, sorted by their offset from R10 (largest offset first).
-// Each stack slot includes the variables that live at that slot, sorted by byte size (largest first) and then name,
-// and optionally the callstack of each variable.
-func getStackSlotUsage(tree *dwarf.Tree, functionName string) [][]slotUsage {
-	result := [][]slotUsage{}
-	for _, n := range tree.ByType(dwarf.TagSubprogram) {
-		name := n.Name()
-		if name == "" || name != functionName {
-			continue
+// stackSlotsFromDWARFVars returns a list of stack slots used by the given function, result is unsorted.
+func stackSlotsFromDWARFVars(progDwarf *dwarf.Node) slotList {
+	result := slotList{}
+
+	stackMap := map[int64][]*dwarf.Node{}
+	dwarf.VisitPrefixOrder(progDwarf, func(n *dwarf.Node) {
+		// We are interested in variables and function parameters since those are the things that can be stored on
+		// the stack.
+		if n.Entry().Tag != dwarf.TagVariable && n.Entry().Tag != dwarf.TagFormalParameter {
+			return
 		}
 
-		entrypoint := n
-		stackMap := map[int64][]*dwarf.Node{}
-		dwarf.VisitPrefixOrder(n, func(n *dwarf.Node) {
-			// We are interested in variables and function parameters since those are the things that can be stored on
-			// the stack.
-			if n.Entry().Tag != dwarf.TagVariable && n.Entry().Tag != dwarf.TagFormalParameter {
-				return
-			}
-
-			// If the current variable lives on the stack, add it to the map of stack offsets to variables that live at that offset.
-			offsets := stackOffsets(n)
-			if len(offsets) > 0 {
-				for _, offset := range offsets {
-					if !slices.Contains(stackMap[offset], n) {
-						stackMap[offset] = append(stackMap[offset], n)
-					}
+		// If the current variable lives on the stack, add it to the map of stack offsets to variables that live at that offset.
+		offsets := stackOffsets(n)
+		if len(offsets) > 0 {
+			for _, offset := range offsets {
+				if !slices.Contains(stackMap[offset], n) {
+					stackMap[offset] = append(stackMap[offset], n)
 				}
 			}
+		}
+	})
+
+	for offset, nodes := range stackMap {
+		slices.SortFunc(nodes, func(a, b *dwarf.Node) int {
+			sz := int(b.ByteSize()) - int(a.ByteSize())
+			if sz != 0 {
+				return sz
+			}
+
+			return strings.Compare(a.Name(), b.Name())
 		})
 
-		// Print the variables grouped by their stack offset, sorted by largest byte size first and then name.
-		for _, offset := range slices.SortedFunc(maps.Keys(stackMap), func(a, b int64) int {
-			return int(b - a)
-		}) {
-			nodes := stackMap[offset]
-			slices.SortFunc(nodes, func(a, b *dwarf.Node) int {
-				sz := int(b.ByteSize()) - int(a.ByteSize())
-				if sz != 0 {
-					return sz
-				}
+		for _, n := range nodes {
+			callstack := []callStackEntry{}
 
-				return strings.Compare(a.Name(), b.Name())
-			})
-
-			// Remove duplicates that can occur, for example when a function is inlined multiple times and it
-			// ends up reusing the same stack space.
-			nodes = slices.CompactFunc(nodes, func(a, b *dwarf.Node) bool {
-				return a.Name() == b.Name() && a.ByteSize() == b.ByteSize() && a.FileCol() == b.FileCol()
-			})
-			for _, n := range nodes {
-				callstack := []callStackEntry{}
-
-				parents := []*dwarf.Node{}
-				p := n
-				for p != nil {
-					p = p.Parent()
-					parents = append(parents, p)
-					if p == entrypoint {
-						break
-					}
-				}
-				for _, parent := range parents {
-					if parent.Name() == "" {
-						continue
-					}
-					callstack = append(callstack, callStackEntry{
-						Name:    parent.Name(),
-						FileCol: parent.FileCol(),
-					})
-				}
-
-				usage := []slotUsage{{
-					Offset:    offset,
-					Name:      n.Name(),
-					ByteSize:  n.ByteSize(),
-					FileCol:   n.FileCol(),
-					Callstack: callstack,
-				}}
-
-				i, found := slices.BinarySearchFunc(result, usage, func(a, b []slotUsage) int {
-					return int(a[0].Offset - b[0].Offset)
-				})
-				if found {
-					result[i] = append(result[i], usage...)
-				} else {
-					result = slices.Insert(result, i, usage)
+			parents := []*dwarf.Node{}
+			p := n
+			for p != nil {
+				p = p.Parent()
+				parents = append(parents, p)
+				if p == progDwarf {
+					break
 				}
 			}
+			for _, parent := range parents {
+				if parent.Name() == "" {
+					continue
+				}
+				fileLineCol := parent.CallFileLineCol()
+				if fileLineCol == "" {
+					fileLineCol = parent.FileLineCol()
+				}
+
+				callstack = append(callstack, callStackEntry{
+					Name:        parent.Name(),
+					FileLineCol: fileLineCol,
+				})
+			}
+
+			fileLineCol := n.CallFileLineCol()
+			if fileLineCol == "" {
+				fileLineCol = n.FileLineCol()
+			}
+
+			usage := slotUsage{
+				Offset:      offset,
+				Name:        n.Name(),
+				ByteSize:    n.ByteSize(),
+				FileLineCol: fileLineCol,
+				Callstack:   callstack,
+			}
+
+			result = result.Add(usage)
 		}
 	}
 
@@ -334,4 +415,116 @@ func isBPFProgram(n *dwarf.Node) bool {
 	}
 
 	return true
+}
+
+// Find stack slot usage by looking at the instructions and enhance with DWARF information.
+// We are specifically looking for this pattern of instructions:
+//
+//	Mov Rx, R10
+//	Add Rx, -N
+//
+// Where Rx is any register and N is some constant.
+func stackSlotsFromInsns(prog *ebpf.ProgramSpec, progDbg *dwarf.Node) slotList {
+	i2n := instructionToNodes(progDbg)
+
+	var result slotList
+
+	iter := prog.Instructions.Iterate()
+	for iter.Next() {
+		// cilium/ebpf automatically adds functions to the program spec, so stop processing
+		// once we reach the end of the original program's instructions.
+		if fn := btf.FuncMetadata(iter.Ins); fn != nil {
+			if fn.Name != prog.Name {
+				break
+			}
+		}
+
+		if iter.Ins.Src == asm.R10 && iter.Ins.OpCode.ALUOp() == asm.Mov {
+			// Validate the pattern: Mov Rx, R10 followed by Add Rx, -N on the same register.
+			nextIdx := iter.Index + 1
+			if nextIdx >= len(prog.Instructions) {
+				continue
+			}
+			nextInsn := prog.Instructions[nextIdx]
+			if nextInsn.OpCode.ALUOp() != asm.Add || nextInsn.Dst != iter.Ins.Dst || nextInsn.Constant >= 0 {
+				continue
+			}
+
+			byteOff := uint64(iter.Offset * asm.InstructionSize)
+
+			var line *btf.Line
+			for j := iter.Index; j < len(prog.Instructions); j++ {
+				ins := prog.Instructions[j]
+				if lo, ok := ins.Source().(*btf.Line); ok && lo.LineNumber() != 0 {
+					line = lo
+					break
+				}
+			}
+
+			fileCol := ""
+			if line != nil {
+				fileCol = line.FileName() + ":" + fmt.Sprint(line.LineNumber())
+			}
+
+			usage := slotUsage{
+				Offset:      -nextInsn.Constant,
+				Name:        iter.Ins.Dst.String(),
+				ByteSize:    -1,
+				FileLineCol: fileCol,
+			}
+			for _, n := range i2n[byteOff] {
+				// Some nodes like Lexical blocks do not have a name or file/line information.
+				// So not useful in the trace.
+				if n.Name() == "" && n.FileLineCol() == "" {
+					continue
+				}
+
+				fileLineCol := n.CallFileLineCol()
+				if fileLineCol == "" {
+					fileLineCol = n.FileLineCol()
+				}
+
+				usage.Callstack = append(usage.Callstack, callStackEntry{
+					Name:        n.Name(),
+					FileLineCol: fileLineCol,
+				})
+			}
+
+			result = result.Add(usage)
+		}
+	}
+
+	return result
+}
+
+// Create a mapping of instruction offsets to the DWARF nodes that are valid at that instruction.
+func instructionToNodes(prog *dwarf.Node) map[uint64][]*dwarf.Node {
+	instRange := make(map[uint64][]*dwarf.Node)
+
+	progInsOffset := prog.Entry().Val(dwarf.AttrLowpc).(uint64)
+
+	dwarf.VisitPrefixOrder(prog, func(n *dwarf.Node) {
+		lowpc := n.Entry().Val(dwarf.AttrLowpc)
+		highpc := n.Entry().Val(dwarf.AttrHighpc)
+		if lowpc != nil && highpc != nil {
+			for i := lowpc.(uint64); i < lowpc.(uint64)+uint64(highpc.(int64)); i += asm.InstructionSize {
+				instRange[i-progInsOffset] = append(instRange[i-progInsOffset], n)
+			}
+		}
+
+		if rng, err := n.Ranges(); err == nil {
+			for _, r := range rng.Ranges {
+				for i := r.Start; i < r.End; i += asm.InstructionSize {
+					instRange[i-progInsOffset] = append(instRange[i-progInsOffset], n)
+				}
+			}
+		}
+	})
+
+	// Reverse since we want to report the stack callstack from the innermost function to the outermost
+	for _, nodes := range instRange {
+		slices.Reverse(nodes)
+	}
+
+	return instRange
 }
