@@ -41,8 +41,12 @@ func root() *cobra.Command {
 	listCmd := listCommand()
 	listCmd.GroupID = primaryGroupID
 
+	lifetimes := lifetimesCommand()
+	lifetimes.GroupID = primaryGroupID
+
 	c.AddCommand(
 		listCmd,
+		lifetimes,
 		versionCommand(),
 	)
 
