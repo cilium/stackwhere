@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/stackwhere/internal/dwarf"
 )
 
@@ -101,7 +102,12 @@ func TestGetStackSlotUsageFromInsns(t *testing.T) {
 		t.Fatalf("failed to find subprogram node for cil_entry")
 	}
 
-	stackUsage := stackSlotsFromInsns(spec.Programs["cil_entry"], subProgs[idx])
+	fn := bpfFn{
+		fn:    btf.FuncMetadata(&spec.Programs["cil_entry"].Instructions[0]),
+		insns: spec.Programs["cil_entry"].Instructions,
+	}
+
+	stackUsage := stackSlotsFromInsns(fn, subProgs[idx])
 	if len(stackUsage) != 1 {
 		t.Fatalf("expected 1 stack slot group, got %d", len(stackUsage))
 	}
