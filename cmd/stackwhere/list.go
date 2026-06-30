@@ -46,6 +46,11 @@ func (psl *programStackList) runE(cmd *cobra.Command, args []string) error {
 	return psl.runListProgram(cmd, args)
 }
 
+type bpfFn struct {
+	fn    *btf.Func
+	insns asm.Instructions
+}
+
 func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) error {
 	collectionPath := args[0]
 	functionName := args[1]
@@ -60,6 +65,28 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 		return fmt.Errorf("failed to load eBPF collection: %w", err)
 	}
 
+	fns := make(map[string]bpfFn)
+	for _, prog := range coll.Programs {
+		var cur bpfFn
+		iter := prog.Instructions.Iterate()
+		for iter.Next() {
+			if fn := btf.FuncMetadata(iter.Ins); fn != nil {
+				if cur.fn != nil {
+					fns[cur.fn.Name] = cur
+				}
+
+				cur.fn = fn
+				cur.insns = asm.Instructions{}
+			}
+
+			cur.insns = append(cur.insns, *iter.Ins)
+		}
+
+		if cur.fn != nil {
+			fns[cur.fn.Name] = cur
+		}
+	}
+
 	subProgsDwarf := tree.ByType(dwarf.TagSubprogram)
 	subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dwarf.Node) bool {
 		return n.Name() == functionName
@@ -69,8 +96,8 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 	}
 
 	subProgDwarf := subProgsDwarf[subProgDwarfIdx]
-	subProg := coll.Programs[functionName]
-	if subProg == nil {
+	subProg := fns[functionName]
+	if subProg.fn == nil {
 		return fmt.Errorf("function %q not found in eBPF collection", functionName)
 	}
 
@@ -424,28 +451,20 @@ func isBPFProgram(n *dwarf.Node) bool {
 //	Add Rx, -N
 //
 // Where Rx is any register and N is some constant.
-func stackSlotsFromInsns(prog *ebpf.ProgramSpec, progDbg *dwarf.Node) slotList {
+func stackSlotsFromInsns(fn bpfFn, progDbg *dwarf.Node) slotList {
 	i2n := instructionToNodes(progDbg)
 
 	var result slotList
 
-	iter := prog.Instructions.Iterate()
+	iter := fn.insns.Iterate()
 	for iter.Next() {
-		// cilium/ebpf automatically adds functions to the program spec, so stop processing
-		// once we reach the end of the original program's instructions.
-		if fn := btf.FuncMetadata(iter.Ins); fn != nil {
-			if fn.Name != prog.Name {
-				break
-			}
-		}
-
 		if iter.Ins.Src == asm.R10 && iter.Ins.OpCode.ALUOp() == asm.Mov {
 			// Validate the pattern: Mov Rx, R10 followed by Add Rx, -N on the same register.
 			nextIdx := iter.Index + 1
-			if nextIdx >= len(prog.Instructions) {
+			if nextIdx >= len(fn.insns) {
 				continue
 			}
-			nextInsn := prog.Instructions[nextIdx]
+			nextInsn := fn.insns[nextIdx]
 			if nextInsn.OpCode.ALUOp() != asm.Add || nextInsn.Dst != iter.Ins.Dst || nextInsn.Constant >= 0 {
 				continue
 			}
@@ -453,8 +472,8 @@ func stackSlotsFromInsns(prog *ebpf.ProgramSpec, progDbg *dwarf.Node) slotList {
 			byteOff := uint64(iter.Offset * asm.InstructionSize)
 
 			var line *btf.Line
-			for j := iter.Index; j < len(prog.Instructions); j++ {
-				ins := prog.Instructions[j]
+			for j := iter.Index; j < len(fn.insns); j++ {
+				ins := fn.insns[j]
 				if lo, ok := ins.Source().(*btf.Line); ok && lo.LineNumber() != 0 {
 					line = lo
 					break
