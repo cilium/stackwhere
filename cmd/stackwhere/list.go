@@ -159,24 +159,31 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 			return fmt.Errorf("failed to encode stack usage data to JSON: %w", err)
 		}
 		return nil
-	} else {
-		for _, slots := range usage {
-			fmt.Printf("R10-%d:\n", slots[0].Offset)
-			for _, slot := range slots {
-				size := fmt.Sprintf("%d", slot.ByteSize)
-				if slot.ByteSize == -1 {
-					size = "?"
-				}
+	}
 
-				name := slot.Name
-				if name == "" {
-					name = "(unknown)"
-				}
+	w := cmd.OutOrStdout()
+	for _, slots := range usage {
+		if _, err := fmt.Fprintf(w, "R10-%d:\n", slots[0].Offset); err != nil {
+			return err
+		}
+		for _, slot := range slots {
+			size := fmt.Sprintf("%d", slot.ByteSize)
+			if slot.ByteSize == -1 {
+				size = "?"
+			}
 
-				fmt.Printf("  %s - %s @ %s\n", size, name, slot.FileLineCol)
-				if *psl.flagCallStack {
-					for _, entry := range slot.Callstack {
-						fmt.Printf("    %s @ %s\n", entry.Name, entry.FileLineCol)
+			name := slot.Name
+			if name == "" {
+				name = "(unknown)"
+			}
+
+			if _, err := fmt.Fprintf(w, "  %s - %s @ %s\n", size, name, slot.FileLineCol); err != nil {
+				return err
+			}
+			if *psl.flagCallStack {
+				for _, entry := range slot.Callstack {
+					if _, err := fmt.Fprintf(w, "    %s @ %s\n", entry.Name, entry.FileLineCol); err != nil {
+						return err
 					}
 				}
 			}
@@ -376,9 +383,12 @@ func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string
 			return fmt.Errorf("failed to encode stack usage data to JSON: %w", err)
 		}
 		return nil
-	} else {
-		for _, prog := range keys {
-			fmt.Printf("%3d bytes - %s\n", stackUsagePerProgram[prog], prog)
+	}
+
+	w := cmd.OutOrStdout()
+	for _, prog := range keys {
+		if _, err := fmt.Fprintf(w, "%3d bytes - %s\n", stackUsagePerProgram[prog], prog); err != nil {
+			return err
 		}
 	}
 
