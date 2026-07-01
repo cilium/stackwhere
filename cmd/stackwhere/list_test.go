@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/cilium/ebpf"
@@ -170,5 +172,42 @@ func TestGetProgramStackUsage(t *testing.T) {
 	expectedStackUsage := int64(56)
 	if stackUsage != expectedStackUsage {
 		t.Errorf("expected stack usage %d, got %d", expectedStackUsage, stackUsage)
+	}
+}
+
+func TestListCollectionWritesToConfiguredOutput(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/basic.o"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	got := stdout.String()
+	if !strings.Contains(got, "56 bytes - cil_entry") {
+		t.Fatalf("expected collection output in configured writer, got %q", got)
+	}
+}
+
+func TestListProgramWritesToConfiguredOutput(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/basic.o", "cil_entry"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	got := stdout.String()
+	if !strings.Contains(got, "R10-0:") {
+		t.Fatalf("expected program output in configured writer, got %q", got)
+	}
+	if !strings.Contains(got, "32 - a @") {
+		t.Fatalf("expected stack slot details in configured writer, got %q", got)
 	}
 }
