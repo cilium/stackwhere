@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -209,5 +210,49 @@ func TestListProgramWritesToConfiguredOutput(t *testing.T) {
 	}
 	if !strings.Contains(got, "32 - a @") {
 		t.Fatalf("expected stack slot details in configured writer, got %q", got)
+	}
+}
+
+func TestSortedProgramStackUsageOrdersEqualUsageByName(t *testing.T) {
+	out := sortedProgramStackUsage(map[string]int64{
+		"beta":  16,
+		"alpha": 16,
+		"gamma": 24,
+	})
+
+	want := []programStackUsage{
+		{Name: "gamma", StackUsage: 24},
+		{Name: "alpha", StackUsage: 16},
+		{Name: "beta", StackUsage: 16},
+	}
+
+	if !slices.Equal(out, want) {
+		t.Fatalf("unexpected sorted output: got %#v want %#v", out, want)
+	}
+}
+
+func TestListCollectionJSONOrdersEqualUsageByName(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/equal.o", "-j"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	var got []programStackUsage
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode JSON output: %v", err)
+	}
+
+	want := []programStackUsage{
+		{Name: "alpha", StackUsage: 16},
+		{Name: "beta", StackUsage: 16},
+	}
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("unexpected JSON output: got %#v want %#v", got, want)
 	}
 }

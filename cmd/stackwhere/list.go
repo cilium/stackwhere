@@ -357,24 +357,7 @@ func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string
 		stackUsagePerProgram[prog.Name()] = getProgramStackUsage(prog)
 	}
 
-	// Sort by stack usage, largest first, and then by name, and print.
-	keys := slices.Collect(maps.Keys(stackUsagePerProgram))
-	slices.SortFunc(keys, func(a, b string) int {
-		return int(stackUsagePerProgram[b] - stackUsagePerProgram[a])
-	})
-
-	type programStackUsage struct {
-		Name       string `json:"name"`
-		StackUsage int64  `json:"stack_usage"`
-	}
-
-	out := []programStackUsage{}
-	for _, prog := range keys {
-		out = append(out, programStackUsage{
-			Name:       prog,
-			StackUsage: stackUsagePerProgram[prog],
-		})
-	}
+	out := sortedProgramStackUsage(stackUsagePerProgram)
 
 	if jsonOutput(cmd) {
 		e := json.NewEncoder(cmd.OutOrStdout())
@@ -386,13 +369,40 @@ func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string
 	}
 
 	w := cmd.OutOrStdout()
-	for _, prog := range keys {
-		if _, err := fmt.Fprintf(w, "%3d bytes - %s\n", stackUsagePerProgram[prog], prog); err != nil {
+	for _, prog := range out {
+		if _, err := fmt.Fprintf(w, "%3d bytes - %s\n", prog.StackUsage, prog.Name); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+type programStackUsage struct {
+	Name       string `json:"name"`
+	StackUsage int64  `json:"stack_usage"`
+}
+
+func sortedProgramStackUsage(stackUsagePerProgram map[string]int64) []programStackUsage {
+	out := make([]programStackUsage, 0, len(stackUsagePerProgram))
+	for _, prog := range slices.Collect(maps.Keys(stackUsagePerProgram)) {
+		out = append(out, programStackUsage{
+			Name:       prog,
+			StackUsage: stackUsagePerProgram[prog],
+		})
+	}
+
+	// Sort by stack usage, largest first, and then by name.
+	slices.SortFunc(out, func(a, b programStackUsage) int {
+		sz := int(b.StackUsage - a.StackUsage)
+		if sz != 0 {
+			return sz
+		}
+
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return out
 }
 
 func getProgramStackUsage(prog *dwarf.Node) int64 {

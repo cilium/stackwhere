@@ -19,6 +19,7 @@ docker:
 
 TARGETS := \
 	basic \
+	equal \
 	spill
 
 .PHONY: all
