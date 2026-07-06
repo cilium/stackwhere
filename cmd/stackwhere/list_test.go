@@ -211,6 +211,32 @@ func TestListProgramWritesToConfiguredOutput(t *testing.T) {
 	if !strings.Contains(got, "32 - a @") {
 		t.Fatalf("expected stack slot details in configured writer, got %q", got)
 	}
+	if strings.Count(got, "16 - two_inlined_a @ /src/basic.c:81") != 1 {
+		t.Fatalf("expected duplicate inline rows to be suppressed in default output, got %q", got)
+	}
+	if strings.Count(got, "16 - two_inlined_b @ /src/basic.c:75") != 1 {
+		t.Fatalf("expected duplicate inline rows to be suppressed in default output, got %q", got)
+	}
+}
+
+func TestListProgramCallStackPreservesDistinctInlineCallSites(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/basic.o", "cil_entry", "--call-stack"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	got := stdout.String()
+	if strings.Count(got, "16 - two_inlined_a @ /src/basic.c:81") != 2 {
+		t.Fatalf("expected both inline call sites in call-stack output, got %q", got)
+	}
+	if !strings.Contains(got, "inlined_a @ /src/basic.c:93:9") || !strings.Contains(got, "inlined_a @ /src/basic.c:103:9") {
+		t.Fatalf("expected both inline call stacks in output, got %q", got)
+	}
 }
 
 func TestSortedProgramStackUsageOrdersEqualUsageByName(t *testing.T) {
