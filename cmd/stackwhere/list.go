@@ -163,6 +163,12 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 
 	w := cmd.OutOrStdout()
 	for _, slots := range usage {
+		if !*psl.flagCallStack {
+			slots = slices.CompactFunc(slices.Clone(slots), func(a, b slotUsage) bool {
+				return a.displayEqual(b)
+			})
+		}
+
 		if _, err := fmt.Fprintf(w, "R10-%d:\n", slots[0].Offset); err != nil {
 			return err
 		}
@@ -213,6 +219,10 @@ type slotUsage struct {
 	ByteSize    int64            `json:"byte_size"`
 	FileLineCol string           `json:"file_line_col"`
 	Callstack   []callStackEntry `json:"callstack,omitempty"`
+}
+
+func (s slotUsage) displayEqual(other slotUsage) bool {
+	return s.Name == other.Name && s.ByteSize == other.ByteSize && s.FileLineCol == other.FileLineCol
 }
 
 type callStackEntry struct {
