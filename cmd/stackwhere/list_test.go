@@ -282,3 +282,30 @@ func TestListCollectionJSONOrdersEqualUsageByName(t *testing.T) {
 		t.Fatalf("unexpected JSON output: got %#v want %#v", got, want)
 	}
 }
+
+func TestListProgramSupportsStartXLengthRangeLists(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/noinline.o", "entry", "-j"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	var got slotList
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode JSON output: %v", err)
+	}
+
+	want := slotList{
+		{
+			{Offset: 4, Name: "r1", ByteSize: -1},
+		},
+	}
+	if len(got) != len(want) || len(got[0]) != len(want[0]) ||
+		got[0][0].Offset != want[0][0].Offset || got[0][0].Name != want[0][0].Name || got[0][0].ByteSize != want[0][0].ByteSize {
+		t.Fatalf("unexpected JSON output: got %#v want %#v", got, want)
+	}
+}

@@ -20,6 +20,7 @@ docker:
 TARGETS := \
 	basic \
 	equal \
+	noinline \
 	spill
 
 .PHONY: all
