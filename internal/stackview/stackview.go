@@ -113,13 +113,40 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 
 	summary := a.CollectionSummary()
 	filtered := make([]ProgramStackUsage, 0, len(summary))
+	subProgsDwarf := a.tree.ByType(dbgdwarf.TagSubprogram)
 	for _, prog := range summary {
-		if fn, ok := a.functions[prog.Name]; ok && fn.fn != nil {
-			filtered = append(filtered, prog)
+		fn, ok := a.functions[prog.Name]
+		if !ok || fn.fn == nil {
+			continue
 		}
+
+		subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dbgdwarf.Node) bool {
+			return n.Name() == prog.Name
+		})
+		if subProgDwarfIdx != -1 {
+			inferredUsage := stackUsageFromSlots(stackSlotsFromInsns(fn, subProgsDwarf[subProgDwarfIdx]))
+			prog.StackUsage = max(prog.StackUsage, inferredUsage)
+		}
+
+		filtered = append(filtered, prog)
 	}
 
 	return filtered, nil
+}
+
+func stackUsageFromSlots(slots slotList) int64 {
+	var largestOffset int64
+	for _, group := range slots {
+		for _, slot := range group {
+			largestOffset = max(largestOffset, slot.Offset)
+		}
+	}
+
+	if largestOffset%8 != 0 {
+		largestOffset = ((largestOffset / 8) + 1) * 8
+	}
+
+	return largestOffset
 }
 
 // ProgramDetails returns grouped stack slot usage for a single program.

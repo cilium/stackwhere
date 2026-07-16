@@ -78,6 +78,24 @@ func TestWebHandlerServesLandingPage(t *testing.T) {
 	}
 }
 
+func TestWebHandlerIncludesInstructionOnlyStackUsage(t *testing.T) {
+	app, err := newWebApp("../../testdata/noinline.o", nil)
+	if err != nil {
+		t.Fatalf("failed to initialize web app: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rr := httptest.NewRecorder()
+	app.handler().ServeHTTP(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("unexpected status code: got %d want 200", rr.Code)
+	}
+	if body := rr.Body.String(); !strings.Contains(body, "8 bytes") {
+		t.Fatalf("expected instruction-derived stack usage in landing page, got %q", body)
+	}
+}
+
 func TestWebHandlerServesProgramPage(t *testing.T) {
 	app, err := newWebApp("../../testdata/basic.o", nil)
 	if err != nil {
