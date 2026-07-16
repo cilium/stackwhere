@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.ProgramName}} - stackwhere</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/app.js" defer></script>
+</head>
+
+<body>
+    <main class="container container-wide">
+        <header class="hero">
+            <h1>{{.ProgramName}}</h1>
+            <p>Per-program stack usage</p>
+            <a class="back-link" href="/">Back to programs</a>
+        </header>
+
+        <section class="program-layout">
+            <div class="program-top-row">
+                <article class="program-pane panel">
+                    <h2>Variables At Stack Slots</h2>
+                    <div class="pane-scroll">
+                        <section class="slots">
+                            {{range .Groups}}
+                            <article class="slot-group">
+                                <h3>R10-{{.Offset}}</h3>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Size</th>
+                                            <th>Name</th>
+                                            <th>Location</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {{range .Entries}}
+                                        <tr>
+                                            <td>{{.Size}}</td>
+                                            <td>{{.Name}}</td>
+                                            <td>
+                                                {{if .SourceURL}}
+                                                <a href="{{.SourceURL}}" target="_blank"
+                                                    rel="noopener noreferrer">{{.FileLineCol}}</a>
+                                                {{else}}
+                                                {{.FileLineCol}}
+                                                {{end}}
+                                            </td>
+                                        </tr>
+                                        {{end}}
+                                    </tbody>
+                                </table>
+                            </article>
+                            {{end}}
+                        </section>
+                    </div>
+                </article>
+
+                <article class="program-pane panel">
+                    <h2>Instructions</h2>
+                    <div class="pane-scroll" id="instructions-pane-scroll">
+                        <div class="instructions-dump" id="instructions-dump">{{- range .InstructionLines }}
+                            <div class="instruction-line{{if ge .RawOffset 0}} has-raw{{end}}" {{if ge .RawOffset 0}}
+                                data-raw="{{.RawOffset}}" id="insn-{{.RawOffset}}" {{end}}>{{if and .IsComment
+                                .SourceURL}}{{.CommentIndent}}<a class="instruction-comment-link" href="{{.SourceURL}}"
+                                    target="_blank"
+                                    rel="noopener noreferrer">{{.CommentText}}</a>{{else}}{{.Text}}{{end}}</div>{{- end
+                            }}
+                        </div>
+                    </div>
+                </article>
+            </div>
+
+            <article class="panel lifetimes-panel">
+                <h2>Variable Lifetimes</h2>
+                <div class="lifetimes-scroll">
+                    {{.LifetimesSVG}}
+                </div>
+            </article>
+        </section>
+    </main>
+</body>
+
+</html>

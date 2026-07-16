@@ -78,6 +78,23 @@ Multiple variables can share the same offset when their lifetimes do not overlap
 
 Spilling of unamed values, such as intermediate values of an expression does not appear in this output (at this this). Such spilled values can share stack slots with named variables and may use gaps in offsets that are shown. 
 
+### Inspecting in a web UI
+
+The `web` (alias `w`) sub-command starts a local web server for exploring stack usage interactively.
+
+```
+$ stackwhere web {path to .o}
+Serving stackwhere web UI on http://127.0.0.1:8080
+```
+
+Use `--source-dir` to limit which directories can be read by the `/source` endpoint. The flag is repeatable.
+
+```
+$ stackwhere web {path to .o} --source-dir ./bpf --source-dir ./common
+```
+
+If no `--source-dir` is set, stackwhere defaults to the directory containing the collection file.
+
 ## Tips for reducing stack usage
 
 The limiting factor for a BPF program is the **peak** memory usage, some ideas to reduce peak memory usage are:

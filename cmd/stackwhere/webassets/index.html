@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>stackwhere web</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="hero">
+            <h1>Stackwhere</h1>
+            <p>Programs and peak stack usage</p>
+        </header>
+
+        <section class="panel">
+            <div class="toolbar">
+                <label for="search">Filter</label>
+                <input id="search" type="search" placeholder="Search program name">
+            </div>
+
+            <table id="program-table">
+                <thead>
+                    <tr>
+                        <th>Program</th>
+                        <th>Peak Stack</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Programs}}
+                    <tr>
+                        <td><a href="/program/{{.URLName}}">{{.Name}}</a></td>
+                        <td>{{.StackUsage}} bytes</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
