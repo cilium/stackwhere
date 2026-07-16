@@ -94,6 +94,22 @@ func TestCollectionSummaryIncludesProgramUsage(t *testing.T) {
 	}
 }
 
+func TestListCollectionIncludesInstructionOnlyStackUsage(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/noinline.o"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	if got := stdout.String(); !strings.Contains(got, "8 bytes - entry") {
+		t.Fatalf("expected instruction-derived stack usage in collection output, got %q", got)
+	}
+}
+
 func TestListCollectionWritesToConfiguredOutput(t *testing.T) {
 	cmd := root()
 	cmd.SetArgs([]string{"list", "../../testdata/basic.o"})

@@ -158,7 +158,10 @@ func newWebApp(collectionPath string, sourceDirs []string) (*webApp, error) {
 		return nil, err
 	}
 
-	summary := analyzer.CollectionSummary()
+	summary, err := analyzer.CollectionSummaryInCollection()
+	if err != nil {
+		return nil, err
+	}
 	spec, functions, err := loadCollectionFunctions(collectionPath)
 	if err != nil {
 		return nil, err
