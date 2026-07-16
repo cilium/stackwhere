@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.RequestPath}} - source - stackwhere</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <main class="container">
+        <header class="hero">
+            <h1>{{.RequestPath}}</h1>
+            <p>Source view</p>
+            <a class="back-link" href="/">Back to programs</a>
+        </header>
+
+        {{if .Found}}
+        <section class="panel source-panel">
+            <p class="source-meta">Resolved path: {{.ResolvedPath}}</p>
+            {{if .Truncated}}
+            <p class="source-warning">Showing a truncated preview of this file.</p>
+            {{end}}
+            <pre
+                class="source-code"><code>{{- range .Lines -}}<span class="source-line{{if .IsHighlight}} source-line-highlight{{end}}"{{if .IsHighlight}} id="highlight-line"{{end}}><span class="source-line-number">{{.Number}}</span><span class="source-line-content">{{.Content}}</span></span>{{- end -}}</code></pre>
+        </section>
+        {{else}}
+        <section class="panel source-missing">
+            <h2>Source file not found</h2>
+            <p>Could not locate the requested source path in configured source directories.</p>
+            <p class="source-meta">Requested path: {{.RequestPath}}</p>
+            <p>Add one or more <code>--source-dir</code> flags when starting <code>stackwhere web</code> to allow access
+                to additional source locations.</p>
+            <p class="source-meta">Configured source directories:</p>
+            <ul>
+                {{range .SourceDirs}}
+                <li><code>{{.}}</code></li>
+                {{else}}
+                <li><code>(none)</code></li>
+                {{end}}
+            </ul>
+        </section>
+        {{end}}
+    </main>
+
+    <script>
+        (function () {
+            var highlight = document.getElementById("highlight-line");
+            if (!highlight) {
+                return;
+            }
+
+            highlight.scrollIntoView({ block: "center", inline: "nearest" });
+        })();
+    </script>
+</body>
+
+</html>

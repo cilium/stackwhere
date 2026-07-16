@@ -121,6 +121,11 @@ type StackLifetime struct {
 	lifetime *Lifetime
 }
 
+type bpfFn struct {
+	fn    *btf.Func
+	insns asm.Instructions
+}
+
 type lifetimesCmd struct {
 	// Dump visitor state, reachable writes, reachable reads, and discovered lifetimes
 	debug            *bool
@@ -129,12 +134,10 @@ type lifetimesCmd struct {
 	drawBBB          *bool
 }
 
-func (lc *lifetimesCmd) run(cmd *cobra.Command, args []string) error {
-	dbgWriter := cmd.OutOrStdout()
-
-	spec, err := ebpf.LoadCollectionSpec(args[0])
+func loadCollectionFunctions(collectionPath string) (*ebpf.CollectionSpec, map[string]bpfFn, error) {
+	spec, err := ebpf.LoadCollectionSpec(collectionPath)
 	if err != nil {
-		return fmt.Errorf("load ebpf collection: %w", err)
+		return nil, nil, fmt.Errorf("load ebpf collection: %w", err)
 	}
 
 	fns := make(map[string]bpfFn)
@@ -157,6 +160,163 @@ func (lc *lifetimesCmd) run(cmd *cobra.Command, args []string) error {
 		if cur.fn != nil {
 			fns[cur.fn.Name] = cur
 		}
+	}
+
+	return spec, fns, nil
+}
+
+func computeStackLifetimes(blocks analyze.Blocks, insns asm.Instructions, reachableWrites map[*analyze.Block][]rw, reads []rw) []StackLifetime {
+	var results []StackLifetime
+
+	for _, read := range reads {
+		lt := &Lifetime{}
+
+		visited := make(map[*analyze.Block]bool)
+		var visit func(block *analyze.Block, stack []*analyze.Block)
+		visit = func(block *analyze.Block, stack []*analyze.Block) {
+			if visited[block] {
+				return
+			}
+			visited[block] = true
+
+			var reachableWritesForOffset []rw
+			for _, write := range reachableWrites[block] {
+				if write.Offset == read.Offset {
+					reachableWritesForOffset = append(reachableWritesForOffset, write)
+				}
+			}
+
+			if len(reachableWritesForOffset) == 0 {
+				return
+			}
+
+			var writesInCur []rw
+			for _, write := range reachableWritesForOffset {
+				if write.Block == block {
+					writesInCur = append(writesInCur, write)
+				}
+			}
+			slices.SortFunc(writesInCur, func(a, b rw) int {
+				return cmp.Compare(a.RawIns, b.RawIns)
+			})
+
+			if len(writesInCur) > 0 {
+				if block == read.Block {
+					for _, write := range slices.Backward(writesInCur) {
+						if write.RawIns < read.RawIns {
+							lt.Add(LTInterval(write.RawIns, read.RawIns, false))
+							return
+						}
+					}
+				} else {
+					lastWrite := writesInCur[len(writesInCur)-1]
+					lt.Add(LTInterval(lastWrite.RawIns, insRawOff(block, insns, block.End), false))
+					for _, b := range slices.Backward(stack) {
+						lt.Add(LTInterval(b.Raw, insRawOff(b, insns, b.End), true))
+					}
+					lt.Add(LTInterval(read.Block.Raw, read.RawIns, true))
+					return
+				}
+			}
+
+			for _, pred := range block.Predecessors {
+				visit(pred, append(stack, block))
+			}
+		}
+		visit(read.Block, nil)
+
+		if len(lt.Intervals) > 0 {
+			results = append(results, StackLifetime{
+				offset:   read.Offset,
+				lifetime: lt,
+			})
+		}
+	}
+
+	slices.SortFunc(results, func(a, b StackLifetime) int {
+		if a.offset == b.offset {
+			return cmp.Compare(a.lifetime.Intervals[0].Start, b.lifetime.Intervals[0].Start)
+		}
+
+		return cmp.Compare(a.offset, b.offset)
+	})
+
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[i].offset != results[j].offset {
+				break
+			}
+
+			overlaps := false
+			for _, it1 := range results[i].lifetime.Intervals {
+				for _, it2 := range results[j].lifetime.Intervals {
+					if it1.Start <= it2.End && it2.Start <= it1.End {
+						overlaps = true
+						break
+					}
+				}
+			}
+			if overlaps {
+				for _, it2 := range results[j].lifetime.Intervals {
+					results[i].lifetime.Add(it2)
+				}
+				results = slices.Delete(results, j, j+1)
+				j--
+			}
+		}
+	}
+
+	for _, slt := range results {
+		for i := len(slt.lifetime.Intervals) - 1; i > 0; i-- {
+			merge := slt.lifetime.Intervals[i-1].End == slt.lifetime.Intervals[i].Start
+			if slt.lifetime.Intervals[i-1].End == slt.lifetime.Intervals[i].Start-1 && slt.lifetime.Intervals[i].BlockStart {
+				merge = true
+			}
+			if merge {
+				slt.lifetime.Intervals[i-1].End = slt.lifetime.Intervals[i].End
+				slt.lifetime.Intervals = slices.Delete(slt.lifetime.Intervals, i, i+1)
+			}
+		}
+	}
+
+	return results
+}
+
+func buildProgramLifetimeGraph(spec *ebpf.CollectionSpec, insns asm.Instructions, drawBBB bool) (string, error) {
+	if len(insns) == 0 {
+		return "", nil
+	}
+
+	blocks, err := analyze.MakeBlocks(insns)
+	if err != nil {
+		return "", fmt.Errorf("make blocks: %w", err)
+	}
+	if len(blocks) == 0 {
+		return "", nil
+	}
+
+	visitor := &visitor{
+		dbgWriter:       io.Discard,
+		spec:            spec,
+		insns:           insns,
+		reachableWrites: make(map[*analyze.Block][]rw),
+		inStates:        make(map[*analyze.Block]state),
+		outStates:       make(map[*analyze.Block]state),
+		seenReads:       make(map[rw]struct{}),
+		seenWrites:      make(map[rw]struct{}),
+	}
+	visitor.visit(blocks[0], state{stack: make(map[int16]stackState)})
+
+	results := computeStackLifetimes(blocks, insns, visitor.reachableWrites, visitor.reads)
+	return graphLifetimes(results, blocks, insns, visitor.writes, visitor.reads, drawBBB), nil
+}
+
+func (lc *lifetimesCmd) run(cmd *cobra.Command, args []string) error {
+	dbgWriter := cmd.OutOrStdout()
+
+	spec, fns, err := loadCollectionFunctions(args[0])
+	if err != nil {
+		return err
 	}
 
 	fn := fns[args[1]]
@@ -209,138 +369,10 @@ func (lc *lifetimesCmd) run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	var results []StackLifetime
-
+	results := computeStackLifetimes(blocks, fn.insns, visitor.reachableWrites, visitor.reads)
 	if *lc.debug {
 		_, _ = fmt.Fprintln(dbgWriter, "\n=== Lifetime discovery ===")
-	}
-	for _, read := range visitor.reads {
-		if *lc.debug {
-			_, _ = fmt.Fprintf(dbgWriter, "Finding lifetimes for %d at %d\n", read.Offset, read.RawIns)
-		}
-		lt := &Lifetime{}
-
-		visited := make(map[*analyze.Block]bool)
-		var visit func(block *analyze.Block, stack []*analyze.Block)
-		visit = func(block *analyze.Block, stack []*analyze.Block) {
-			if visited[block] {
-				return
-			}
-			visited[block] = true
-
-			var reachableWritesForOffset []rw
-			for _, write := range visitor.reachableWrites[block] {
-				if write.Offset == read.Offset {
-					reachableWritesForOffset = append(reachableWritesForOffset, write)
-				}
-			}
-
-			// No more reachable writes for this offset, no point in visiting further predecessors
-			if len(reachableWritesForOffset) == 0 {
-				return
-			}
-
-			var writesInCur []rw
-			for _, write := range reachableWritesForOffset {
-				if write.Block == block {
-					writesInCur = append(writesInCur, write)
-				}
-			}
-			slices.SortFunc(writesInCur, func(a, b rw) int {
-				return cmp.Compare(a.RawIns, b.RawIns)
-			})
-
-			// If there is a write in the current block
-			if len(writesInCur) > 0 {
-				// if the current block is the same block as the read, add a single interval from the write to the read
-				if block == read.Block {
-					for _, write := range slices.Backward(writesInCur) {
-						if write.RawIns < read.RawIns {
-							lt.Add(LTInterval(write.RawIns, read.RawIns, false))
-
-							// No need to explore further, we have found the last write before the read
-							return
-						}
-					}
-				} else {
-					lastWrite := writesInCur[len(writesInCur)-1]
-					// From last write to end of block
-					lt.Add(LTInterval(lastWrite.RawIns, insRawOff(block, fn.insns, block.End), false))
-					// From start of block to end of block for all blocks in the stack
-					for _, b := range slices.Backward(stack) {
-						lt.Add(LTInterval(b.Raw, insRawOff(b, fn.insns, b.End), true))
-					}
-					// From start of block to read in the read block
-					lt.Add(LTInterval(read.Block.Raw, read.RawIns, true))
-
-					// No need to explore further, we have found the last write before the read
-					return
-				}
-			}
-
-			for _, pred := range block.Predecessors {
-				visit(pred, append(stack, block))
-			}
-		}
-		visit(read.Block, nil)
-
-		if len(lt.Intervals) > 0 {
-			results = append(results, StackLifetime{
-				offset:   read.Offset,
-				lifetime: lt,
-			})
-
-			if *lc.debug {
-				_, _ = fmt.Fprintln(dbgWriter, lt)
-			}
-		}
-	}
-
-	slices.SortFunc(results, func(a, b StackLifetime) int {
-		if a.offset == b.offset {
-			return cmp.Compare(a.lifetime.Intervals[0].Start, b.lifetime.Intervals[0].Start)
-		}
-
-		return cmp.Compare(a.offset, b.offset)
-	})
-
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[i].offset != results[j].offset {
-				break
-			}
-
-			overlaps := false
-			for _, it1 := range results[i].lifetime.Intervals {
-				for _, it2 := range results[j].lifetime.Intervals {
-					if it1.Start <= it2.End && it2.Start <= it1.End {
-						overlaps = true
-						break
-					}
-				}
-			}
-			if overlaps {
-				for _, it2 := range results[j].lifetime.Intervals {
-					results[i].lifetime.Add(it2)
-				}
-				results = slices.Delete(results, j, j+1)
-				j--
-			}
-		}
-	}
-
-	for _, slt := range results {
-		for i := len(slt.lifetime.Intervals) - 1; i > 0; i-- {
-			merge := slt.lifetime.Intervals[i-1].End == slt.lifetime.Intervals[i].Start
-			if slt.lifetime.Intervals[i-1].End == slt.lifetime.Intervals[i].Start-1 && slt.lifetime.Intervals[i].BlockStart {
-				merge = true
-			}
-			if merge {
-				slt.lifetime.Intervals[i-1].End = slt.lifetime.Intervals[i].End
-				slt.lifetime.Intervals = slices.Delete(slt.lifetime.Intervals, i, i+1)
-			}
-		}
-		if *lc.debug {
+		for _, slt := range results {
 			_, _ = fmt.Fprintf(dbgWriter, "%d : %v\n", slt.offset, slt.lifetime)
 		}
 	}
@@ -1402,7 +1434,7 @@ func graphLifetimes(lifetimes []StackLifetime, blocks analyze.Blocks, insns asm.
 		}
 		cx := marginLeft + int(w.RawIns)*cellW + cellW/2
 		cy := marginTop + rowIdx*rowH + rowH/2
-		fmt.Fprintf(&sb, `<circle cx="%d" cy="%d" r="4" fill="black"/>`, cx, cy)
+		fmt.Fprintf(&sb, `<circle class="lifetime-dot lifetime-dot-write" data-raw="%d" cx="%d" cy="%d" r="4" fill="black"/>`, w.RawIns, cx, cy)
 	}
 
 	// Read markers: white circles with black stroke.
@@ -1413,7 +1445,7 @@ func graphLifetimes(lifetimes []StackLifetime, blocks analyze.Blocks, insns asm.
 		}
 		cx := marginLeft + int(r.RawIns)*cellW + cellW/2
 		cy := marginTop + rowIdx*rowH + rowH/2
-		fmt.Fprintf(&sb, `<circle cx="%d" cy="%d" r="4" fill="white" stroke="black" stroke-width="1.5"/>`, cx, cy)
+		fmt.Fprintf(&sb, `<circle class="lifetime-dot lifetime-dot-read" data-raw="%d" cx="%d" cy="%d" r="4" fill="white" stroke="black" stroke-width="1.5"/>`, r.RawIns, cx, cy)
 	}
 
 	// Border around the chart area.
