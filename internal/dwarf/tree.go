@@ -59,22 +59,22 @@ func newDWARFTreeReader(fileReader io.ReaderAt) (*Tree, error) {
 			continue
 		}
 
-		n := newNode(tree, entry)
+		var n *Node
 		if cur == nil {
 			if entry.Tag != dwarf.TagCompileUnit {
 				return nil, fmt.Errorf("unexpected root entry with tag %s", entry.Tag)
 			}
-
-			tree.root = n
-			cur = n
 
 			lr, err := dbg.LineReader(entry)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create line reader: %w", err)
 			}
 
-			tree.files = lr.Files()
+			n = newNode(tree, entry, lr.Files())
+			tree.root = n
+			cur = n
 		} else {
+			n = newNode(tree, entry, cur.files)
 			cur.children = append(cur.children, n)
 			n.parent = cur
 
@@ -94,16 +94,14 @@ type Tree struct {
 	index  map[dwarf.Offset]*Node
 	byType map[dwarf.Tag][]*Node
 
-	files []*dwarf.LineFile
-	llt   *LoclistTable
-	rlt   *RangeListTable
+	llt *LoclistTable
+	rlt *RangeListTable
 }
 
 func newTree(llt *LoclistTable, rlt *RangeListTable) *Tree {
 	return &Tree{
 		index:  make(map[dwarf.Offset]*Node),
 		byType: make(map[dwarf.Tag][]*Node),
-		files:  nil,
 		llt:    llt,
 		rlt:    rlt,
 	}
@@ -125,8 +123,8 @@ func (t *Tree) Dump() {
 	t.root.Dump(0)
 }
 
-func newNode(tree *Tree, entry *dwarf.Entry) *Node {
-	return &Node{tree: tree, entry: entry}
+func newNode(tree *Tree, entry *dwarf.Entry, files []*dwarf.LineFile) *Node {
+	return &Node{tree: tree, entry: entry, files: files}
 }
 
 type Node struct {
@@ -134,6 +132,7 @@ type Node struct {
 	entry    *dwarf.Entry
 	parent   *Node
 	children []*Node
+	files    []*dwarf.LineFile
 }
 
 func (n *Node) Entry() *dwarf.Entry {
@@ -200,7 +199,7 @@ func (n *Node) Dump(indent int) {
 		}
 
 		if attr.Attr == dwarf.AttrDeclFile {
-			fmt.Printf("%s %s: %s\n", strings.Repeat(" ", indent), attr.Attr, n.tree.files[attr.Val.(int64)].Name)
+			fmt.Printf("%s %s: %s\n", strings.Repeat(" ", indent), attr.Attr, n.files[attr.Val.(int64)].Name)
 			continue
 		}
 
@@ -381,7 +380,7 @@ func (n *Node) FileLineCol() string {
 
 		return ""
 	}
-	file := n.tree.files[fileIndex.(int64)]
+	file := n.files[fileIndex.(int64)]
 
 	fileLine := n.Entry().Val(dwarf.AttrDeclLine)
 	if fileLine != nil {
@@ -406,7 +405,7 @@ func (n *Node) CallFileLineCol() string {
 
 		return ""
 	}
-	file := n.tree.files[callFileIndex.(int64)]
+	file := n.files[callFileIndex.(int64)]
 
 	callLine := n.Entry().Val(dwarf.AttrCallLine)
 	if callLine != nil {
