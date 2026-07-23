@@ -46,6 +46,18 @@ func TestStartupURL(t *testing.T) {
 	}
 }
 
+func TestWebCommandBindsLoopbackByDefault(t *testing.T) {
+	cmd := webCommand()
+	addr, err := cmd.Flags().GetString("addr")
+	if err != nil {
+		t.Fatalf("failed to get addr flag: %v", err)
+	}
+
+	if want := "127.0.0.1:8080"; addr != want {
+		t.Fatalf("default addr = %q, want %q", addr, want)
+	}
+}
+
 func TestWebCommandRequiresCollectionArg(t *testing.T) {
 	cmd := root()
 	cmd.SetArgs([]string{"web"})

@@ -43,7 +43,7 @@ func webCommand() *cobra.Command {
 
 	flags := c.Flags()
 	wc := &webCmd{
-		flagAddr: flags.String("addr", ":8080", "Address to bind the local web server to"),
+		flagAddr: flags.String("addr", "127.0.0.1:8080", "Address to bind the local web server to"),
 		flagSourceDirs: flags.StringSlice(
 			"source-dir",
 			nil,
