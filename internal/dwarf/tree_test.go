@@ -5,8 +5,67 @@ package dwarf
 
 import (
 	"debug/dwarf"
+	"slices"
 	"testing"
 )
+
+func TestNormalizeCompileUnitFiles(t *testing.T) {
+	tests := []struct {
+		name     string
+		unitName string
+		compDir  string
+		fileName string
+		want     string
+	}{
+		{
+			name:     "joined absolute path",
+			unitName: "/src/basic.c",
+			compDir:  "/go",
+			fileName: "/go/src/basic.c",
+			want:     "/src/basic.c",
+		},
+		{
+			name:     "relative unit path",
+			unitName: "src/basic.c",
+			compDir:  "/go",
+			fileName: "/go/src/basic.c",
+			want:     "/go/src/basic.c",
+		},
+		{
+			name:     "correct absolute path",
+			unitName: "/src/basic.c",
+			compDir:  "/go",
+			fileName: "/src/basic.c",
+			want:     "/src/basic.c",
+		},
+		{
+			name:     "unrelated file",
+			unitName: "/src/basic.c",
+			compDir:  "/go",
+			fileName: "/go/src/header.h",
+			want:     "/go/src/header.h",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := &dwarf.Entry{Field: []dwarf.Field{
+				{Attr: dwarf.AttrName, Val: tt.unitName},
+				{Attr: dwarf.AttrCompDir, Val: tt.compDir},
+			}}
+			file := &dwarf.LineFile{Name: tt.fileName}
+			files := []*dwarf.LineFile{file}
+
+			got := normalizeCompileUnitFiles(entry, files)
+			if got[0].Name != tt.want {
+				t.Fatalf("normalized file name = %q, want %q", got[0].Name, tt.want)
+			}
+			if file.Name != tt.fileName || !slices.Equal(files, []*dwarf.LineFile{file}) {
+				t.Fatalf("normalizeCompileUnitFiles mutated its input")
+			}
+		})
+	}
+}
 
 func TestNodeLocationsUseCompilationUnitFiles(t *testing.T) {
 	firstUnitFiles := []*dwarf.LineFile{{Name: "first.c"}}

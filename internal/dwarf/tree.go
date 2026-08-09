@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
+	"slices"
 	"strings"
 
 	"github.com/davecgh/go-spew/spew"
@@ -70,7 +72,7 @@ func newDWARFTreeReader(fileReader io.ReaderAt) (*Tree, error) {
 				return nil, fmt.Errorf("failed to create line reader: %w", err)
 			}
 
-			n = newNode(tree, entry, lr.Files())
+			n = newNode(tree, entry, normalizeCompileUnitFiles(entry, lr.Files()))
 			tree.root = n
 			cur = n
 		} else {
@@ -87,6 +89,31 @@ func newDWARFTreeReader(fileReader io.ReaderAt) (*Tree, error) {
 	}
 
 	return tree, nil
+}
+
+func normalizeCompileUnitFiles(entry *dwarf.Entry, files []*dwarf.LineFile) []*dwarf.LineFile {
+	name, _ := entry.Val(dwarf.AttrName).(string)
+	compDir, _ := entry.Val(dwarf.AttrCompDir).(string)
+	if !path.IsAbs(name) || compDir == "" {
+		return files
+	}
+
+	// debug/dwarf joins DWARF 5 directory and file entries even when the file
+	// name is absolute. Restore the compilation unit path when that happened.
+	joinedName := path.Join(compDir, name)
+	for i, file := range files {
+		if file == nil || file.Name != joinedName {
+			continue
+		}
+
+		normalized := slices.Clone(files)
+		normalizedFile := *file
+		normalizedFile.Name = name
+		normalized[i] = &normalizedFile
+		return normalized
+	}
+
+	return files
 }
 
 type Tree struct {
