@@ -63,6 +63,14 @@ func (wc *webCmd) runE(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	listener, err := net.Listen("tcp", *wc.flagAddr)
+	if err != nil {
+		return fmt.Errorf("web server failed: %w", err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Serving stackwhere web UI on %s\n", startupURL(*wc.flagAddr)); err != nil {
 		return err
 	}
@@ -72,7 +80,7 @@ func (wc *webCmd) runE(cmd *cobra.Command, args []string) error {
 		Handler: app.handler(),
 	}
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("web server failed: %w", err)
 	}
 	return nil

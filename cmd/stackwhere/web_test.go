@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -52,6 +53,29 @@ func TestWebCommandRequiresCollectionArg(t *testing.T) {
 
 	if err := cmd.Execute(); err == nil {
 		t.Fatalf("expected web command to fail when collection argument is missing")
+	}
+}
+
+func TestWebCommandDoesNotAnnounceFailedBind(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to reserve test address: %v", err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+
+	cmd := root()
+	cmd.SetArgs([]string{"web", "../../testdata/basic.o", "--addr", listener.Addr().String()})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("expected web command to fail when address is already in use")
+	}
+	if got := stdout.String(); strings.Contains(got, "Serving stackwhere web UI") {
+		t.Fatalf("web command announced a server that failed to start: %q", got)
 	}
 }
 
