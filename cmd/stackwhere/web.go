@@ -569,6 +569,17 @@ func (wa *webApp) resolveSourcePath(requestedPath string) (string, bool) {
 	candidates := make([]string, 0, len(wa.sourceDirs))
 	if filepath.IsAbs(cleanPath) {
 		candidates = append(candidates, cleanPath)
+
+		pathWithoutVolume := strings.TrimPrefix(cleanPath, filepath.VolumeName(cleanPath))
+		parts := strings.FieldsFunc(pathWithoutVolume, func(r rune) bool {
+			return r == rune(filepath.Separator)
+		})
+		for i := range parts {
+			suffix := filepath.Join(parts[i:]...)
+			for _, sourceDir := range wa.sourceDirs {
+				candidates = append(candidates, filepath.Join(sourceDir, suffix))
+			}
+		}
 	} else {
 		for _, sourceDir := range wa.sourceDirs {
 			candidates = append(candidates, filepath.Join(sourceDir, cleanPath))

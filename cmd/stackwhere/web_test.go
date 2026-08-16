@@ -187,6 +187,43 @@ func TestWebHandlerServesSourcePage(t *testing.T) {
 	}
 }
 
+func TestWebHandlerPrefersRelocatedSourcePath(t *testing.T) {
+	sourceDir := t.TempDir()
+	for _, dir := range []string{"a", "src"} {
+		if err := os.Mkdir(filepath.Join(sourceDir, dir), 0o755); err != nil {
+			t.Fatalf("failed to create source directory: %v", err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(sourceDir, "a", "basic.c"), []byte("int wrong_source;\n"), 0o644); err != nil {
+		t.Fatalf("failed to write wrong source file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "src", "basic.c"), []byte("int expected_source;\n"), 0o644); err != nil {
+		t.Fatalf("failed to write expected source file: %v", err)
+	}
+
+	app, err := newWebApp("../../testdata/basic.o", []string{sourceDir})
+	if err != nil {
+		t.Fatalf("failed to initialize web app: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/source?file=%2Fsrc%2Fbasic.c", nil)
+	rr := httptest.NewRecorder()
+	app.handler().ServeHTTP(rr, req)
+
+	if rr.Code != 200 {
+		t.Fatalf("unexpected status code: got %d want 200", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "expected_source") {
+		t.Fatalf("expected relocated source file, got %q", body)
+	}
+	if strings.Contains(body, "wrong_source") {
+		t.Fatalf("unexpected basename-only source match, got %q", body)
+	}
+}
+
 func TestWebHandlerSourcePageNotFound(t *testing.T) {
 	app, err := newWebApp("../../testdata/basic.o", nil)
 	if err != nil {
