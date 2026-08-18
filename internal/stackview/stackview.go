@@ -324,7 +324,9 @@ func isBPFProgram(n *dbgdwarf.Node) bool {
 		return false
 	}
 
-	if n.Entry().Val(dbgdwarf.AttrType) == nil {
+	// Concrete functions have an address or ranges. Unlike declarations, void
+	// functions have executable code but no return type attribute.
+	if n.Entry().Val(dbgdwarf.AttrLowpc) == nil && n.Entry().Val(dbgdwarf.AttrRanges) == nil {
 		return false
 	}
 
