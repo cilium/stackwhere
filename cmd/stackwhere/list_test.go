@@ -110,6 +110,32 @@ func TestListCollectionIncludesInstructionOnlyStackUsage(t *testing.T) {
 	}
 }
 
+func TestListCollectionSortsAfterInferringStackUsage(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/noinline.o", "-j"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	var got []stackview.ProgramStackUsage
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode JSON output: %v", err)
+	}
+
+	want := []stackview.ProgramStackUsage{
+		{Name: "entry", StackUsage: 8},
+		{Name: "z_known", StackUsage: 8},
+		{Name: "helper", StackUsage: 0},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("unexpected JSON output: got %#v want %#v", got, want)
+	}
+}
+
 func TestListCollectionIncludesVoidFunction(t *testing.T) {
 	cmd := root()
 	cmd.SetArgs([]string{"list", "../../testdata/noinline.o"})

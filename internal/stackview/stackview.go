@@ -112,7 +112,7 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 	}
 
 	summary := a.CollectionSummary()
-	filtered := make([]ProgramStackUsage, 0, len(summary))
+	stackUsagePerProgram := make(map[string]int64, len(summary))
 	subProgsDwarf := a.tree.ByType(dbgdwarf.TagSubprogram)
 	for _, prog := range summary {
 		fn, ok := a.functions[prog.Name]
@@ -128,10 +128,10 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 			prog.StackUsage = max(prog.StackUsage, inferredUsage)
 		}
 
-		filtered = append(filtered, prog)
+		stackUsagePerProgram[prog.Name] = prog.StackUsage
 	}
 
-	return filtered, nil
+	return SortProgramStackUsage(stackUsagePerProgram), nil
 }
 
 func stackUsageFromSlots(slots slotList) int64 {
