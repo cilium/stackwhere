@@ -22,7 +22,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11
+          version: v2.13
   # Run go test to ensure tests pass
   gotest:
     name: tests
