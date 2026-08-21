@@ -15,14 +15,14 @@ In BPF, every byte of stack usage counts, the verifier limits us to 512 bytes of
 #### Example on Linux AMD64
 
 ```bash
-wget https://github.com/cilium/stackwhere/releases/download/v0.3.1/stackwhere_0.3.1_linux_amd64.tar.gz
+wget https://github.com/cilium/stackwhere/releases/download/v0.3.2/stackwhere_0.3.2_linux_amd64.tar.gz
 
 # Optional, verify checksum
-wget https://github.com/cilium/stackwhere/releases/download/v0.3.1/stackwhere_0.3.1_checksums.txt
-sha256sum -c stackwhere_0.3.1_checksums.txt --ignore-missing
-# Should say: stackwhere_0.3.1_linux_amd64.tar.gz: OK
+wget https://github.com/cilium/stackwhere/releases/download/v0.3.2/stackwhere_0.3.2_checksums.txt
+sha256sum -c stackwhere_0.3.2_checksums.txt --ignore-missing
+# Should say: stackwhere_0.3.2_linux_amd64.tar.gz: OK
 
-tar -xzf stackwhere_0.3.1_linux_amd64.tar.gz
+tar -xzf stackwhere_0.3.2_linux_amd64.tar.gz
 sudo mv stackwhere /usr/bin/stackwhere
 ```
 
