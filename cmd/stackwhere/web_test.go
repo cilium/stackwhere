@@ -12,36 +12,47 @@ import (
 
 func TestStartupURL(t *testing.T) {
 	tests := []struct {
-		name string
-		addr string
-		want string
+		name      string
+		addr      string
+		boundAddr string
+		want      string
 	}{
 		{
-			name: "host omitted",
-			addr: ":8080",
-			want: "http://127.0.0.1:8080",
+			name:      "host omitted",
+			addr:      ":8080",
+			boundAddr: "[::]:8080",
+			want:      "http://127.0.0.1:8080",
 		},
 		{
-			name: "explicit ipv4 host",
-			addr: "0.0.0.0:8080",
-			want: "http://0.0.0.0:8080",
+			name:      "explicit ipv4 host",
+			addr:      "0.0.0.0:8080",
+			boundAddr: "0.0.0.0:8080",
+			want:      "http://0.0.0.0:8080",
 		},
 		{
-			name: "explicit hostname",
-			addr: "localhost:9090",
-			want: "http://localhost:9090",
+			name:      "explicit hostname",
+			addr:      "localhost:9090",
+			boundAddr: "127.0.0.1:9090",
+			want:      "http://localhost:9090",
 		},
 		{
-			name: "explicit ipv6 host",
-			addr: "[::1]:8080",
-			want: "http://[::1]:8080",
+			name:      "explicit ipv6 host",
+			addr:      "[::1]:8080",
+			boundAddr: "[::1]:8080",
+			want:      "http://[::1]:8080",
+		},
+		{
+			name:      "ephemeral port",
+			addr:      "127.0.0.1:0",
+			boundAddr: "127.0.0.1:36833",
+			want:      "http://127.0.0.1:36833",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := startupURL(tt.addr); got != tt.want {
-				t.Fatalf("startupURL(%q) = %q, want %q", tt.addr, got, tt.want)
+			if got := startupURL(tt.addr, tt.boundAddr); got != tt.want {
+				t.Fatalf("startupURL(%q, %q) = %q, want %q", tt.addr, tt.boundAddr, got, tt.want)
 			}
 		})
 	}

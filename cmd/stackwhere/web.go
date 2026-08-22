@@ -71,7 +71,7 @@ func (wc *webCmd) runE(cmd *cobra.Command, args []string) error {
 		_ = listener.Close()
 	}()
 
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Serving stackwhere web UI on %s\n", startupURL(*wc.flagAddr)); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Serving stackwhere web UI on %s\n", startupURL(*wc.flagAddr, listener.Addr().String())); err != nil {
 		return err
 	}
 
@@ -86,10 +86,13 @@ func (wc *webCmd) runE(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func startupURL(addr string) string {
+func startupURL(addr, boundAddr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "http://" + addr
+	}
+	if _, boundPort, err := net.SplitHostPort(boundAddr); err == nil {
+		port = boundPort
 	}
 
 	if host == "" {
