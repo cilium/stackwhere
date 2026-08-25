@@ -195,6 +195,22 @@ func TestListProgramWritesToConfiguredOutput(t *testing.T) {
 	}
 }
 
+func TestListProgramReportsNoStackUsage(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/noinline.o", "helper"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	if got, want := stdout.String(), "No stack usage.\n"; got != want {
+		t.Fatalf("expected explicit no-stack-usage output, got %q, want %q", got, want)
+	}
+}
+
 func TestListProgramCallStackPreservesDistinctInlineCallSites(t *testing.T) {
 	cmd := root()
 	cmd.SetArgs([]string{"list", "../../testdata/basic.o", "cil_entry", "--call-stack"})
