@@ -64,6 +64,11 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 	}
 
 	w := cmd.OutOrStdout()
+	if len(usage) == 0 {
+		_, err := fmt.Fprintln(w, "No stack usage.")
+		return err
+	}
+
 	for _, slots := range usage {
 		if !*psl.flagCallStack {
 			slots = slices.CompactFunc(slices.Clone(slots), func(a, b stackview.SlotUsage) bool {
