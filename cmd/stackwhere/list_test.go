@@ -110,6 +110,22 @@ func TestListCollectionIncludesInstructionOnlyStackUsage(t *testing.T) {
 	}
 }
 
+func TestListCollectionIncludesDirectStackAccessUsage(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{"list", "../../testdata/spill.o"})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+
+	if got := stdout.String(); !strings.Contains(got, "8 bytes - direct_spill") {
+		t.Fatalf("expected direct stack access usage in collection output, got %q", got)
+	}
+}
+
 func TestListCollectionSortsAfterInferringStackUsage(t *testing.T) {
 	cmd := root()
 	cmd.SetArgs([]string{"list", "../../testdata/noinline.o", "-j"})
