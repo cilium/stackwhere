@@ -1,5 +1,6 @@
 #define __section(X) __attribute__((section(X), used))
 #define __always_inline inline __attribute__((always_inline))
+#define __noinline __attribute__((noinline))
 
 #define __uint(name, val) int (*name)[val]
 #define __type(name, val) typeof(val) *name
@@ -43,4 +44,19 @@ __section("tc") int cil_entry(void *ctx)
     use_int(a);
     // Now use both
     return a + b;
+}
+
+static __noinline int sum_five(int a, int b, int c, int d, int e)
+{
+    return a + b + c + d + e;
+}
+
+__section("tc/direct_spill") int direct_spill(void *ctx)
+{
+    return bpf_get_prandom_u32() + sum_five(
+        bpf_get_prandom_u32(),
+        bpf_get_prandom_u32(),
+        bpf_get_prandom_u32(),
+        bpf_get_prandom_u32(),
+        bpf_get_prandom_u32());
 }
