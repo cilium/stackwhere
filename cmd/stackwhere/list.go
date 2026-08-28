@@ -44,7 +44,7 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 	collectionPath := args[0]
 	functionName := args[1]
 
-	analyzer, err := stackview.NewAnalyzer(collectionPath)
+	analyzer, err := stackview.NewAnalyzer(collectionPath, dwarves(cmd))
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (psl *programStackList) runListProgram(cmd *cobra.Command, args []string) e
 func (psl *programStackList) runListCollection(cmd *cobra.Command, args []string) error {
 	collectionPath := args[0]
 
-	analyzer, err := stackview.NewAnalyzer(collectionPath)
+	analyzer, err := stackview.NewAnalyzer(collectionPath, dwarves(cmd))
 	if err != nil {
 		return err
 	}
