@@ -23,7 +23,7 @@ func hasSlot(slots [][]stackview.SlotUsage, wantName string, wantSize int64) boo
 }
 
 func TestProgramDetailsFromDWARF(t *testing.T) {
-	analyzer, err := stackview.NewAnalyzer("../../testdata/basic.o")
+	analyzer, err := stackview.NewAnalyzer("../../testdata/basic.o", nil)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestProgramDetailsFromDWARF(t *testing.T) {
 }
 
 func TestProgramDetailsFromInsns(t *testing.T) {
-	analyzer, err := stackview.NewAnalyzer("../../testdata/spill.o")
+	analyzer, err := stackview.NewAnalyzer("../../testdata/spill.o", nil)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestProgramDetailsFromInsns(t *testing.T) {
 }
 
 func TestCollectionSummaryIncludesProgramUsage(t *testing.T) {
-	analyzer, err := stackview.NewAnalyzer("../../testdata/basic.o")
+	analyzer, err := stackview.NewAnalyzer("../../testdata/basic.o", nil)
 	if err != nil {
 		t.Fatalf("failed to initialize analyzer: %v", err)
 	}

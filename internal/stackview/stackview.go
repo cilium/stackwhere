@@ -24,7 +24,7 @@ var ErrFunctionNotFoundInCollection = errors.New("function not found in eBPF col
 // Analyzer provides stack usage information for one collection file.
 type Analyzer struct {
 	collectionPath string
-	tree           *dbgdwarf.Tree
+	trees          []*dbgdwarf.Tree
 	functions      map[string]bpfFn
 }
 
@@ -78,22 +78,30 @@ func (s slotList) Add(slot SlotUsage) slotList {
 }
 
 // NewAnalyzer parses DWARF data from a collection path.
-func NewAnalyzer(collectionPath string) (*Analyzer, error) {
-	tree, err := dbgdwarf.NewDWARFTree(collectionPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse DWARF data: %w", err)
+func NewAnalyzer(collectionPath string, dwarfPathes []string) (*Analyzer, error) {
+	if len(dwarfPathes) == 0 {
+		dwarfPathes = []string{collectionPath}
+	}
+
+	var trees []*dbgdwarf.Tree
+	for _, dwarfPath := range dwarfPathes {
+		tree, err := dbgdwarf.NewDWARFTree(dwarfPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse DWARF data: %w", err)
+		}
+		trees = append(trees, tree)
 	}
 
 	return &Analyzer{
 		collectionPath: collectionPath,
-		tree:           tree,
+		trees:          trees,
 	}, nil
 }
 
 // CollectionSummary returns peak stack usage for all BPF programs in the collection.
 func (a *Analyzer) CollectionSummary() []ProgramStackUsage {
 	stackUsagePerProgram := map[string]int64{}
-	for _, prog := range a.tree.ByType(dbgdwarf.TagSubprogram) {
+	for _, prog := range a.subProgsDwarf() {
 		if !isBPFProgram(prog) {
 			continue
 		}
@@ -113,7 +121,7 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 
 	summary := a.CollectionSummary()
 	stackUsagePerProgram := make(map[string]int64, len(summary))
-	subProgsDwarf := a.tree.ByType(dbgdwarf.TagSubprogram)
+	subProgsDwarf := a.subProgsDwarf()
 	for _, prog := range summary {
 		fn, ok := a.functions[prog.Name]
 		if !ok || fn.fn == nil {
@@ -121,7 +129,10 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 		}
 
 		subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dbgdwarf.Node) bool {
-			return n.Name() == prog.Name
+			// We might have multiple debug infos for a single symbol
+			// due to multiple DWARF files considered. Prefer
+			// definitions to forward declarations.
+			return isBPFProgram(n) && n.Name() == prog.Name
 		})
 		if subProgDwarfIdx != -1 {
 			inferredUsage := stackUsageFromSlots(stackSlotsFromInsns(fn, subProgsDwarf[subProgDwarfIdx]))
@@ -155,7 +166,7 @@ func (a *Analyzer) ProgramDetails(functionName string) ([][]SlotUsage, error) {
 		return nil, err
 	}
 
-	subProgsDwarf := a.tree.ByType(dbgdwarf.TagSubprogram)
+	subProgsDwarf := a.subProgsDwarf()
 	subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dbgdwarf.Node) bool {
 		return n.Name() == functionName
 	})
@@ -174,6 +185,13 @@ func (a *Analyzer) ProgramDetails(functionName string) ([][]SlotUsage, error) {
 	usage = normalizeSlotUsage(usage)
 
 	return usage, nil
+}
+
+func (a *Analyzer) subProgsDwarf() (res []*dbgdwarf.Node) {
+	for _, tree := range a.trees {
+		res = append(res, tree.ByType(dbgdwarf.TagSubprogram)...)
+	}
+	return
 }
 
 func (a *Analyzer) loadFunctions() error {
