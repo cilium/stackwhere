@@ -124,7 +124,10 @@ func (a *Analyzer) CollectionSummaryInCollection() ([]ProgramStackUsage, error) 
 			return n.Name() == prog.Name
 		})
 		if subProgDwarfIdx != -1 {
-			inferredUsage := stackUsageFromSlots(stackSlotsFromInsns(fn, subProgsDwarf[subProgDwarfIdx]))
+			inferredUsage := max(
+				stackUsageFromSlots(stackSlotsFromInsns(fn, subProgsDwarf[subProgDwarfIdx])),
+				stackUsageFromDirectMemoryAccesses(fn.insns),
+			)
 			prog.StackUsage = max(prog.StackUsage, inferredUsage)
 		}
 
@@ -142,11 +145,35 @@ func stackUsageFromSlots(slots slotList) int64 {
 		}
 	}
 
-	if largestOffset%8 != 0 {
-		largestOffset = ((largestOffset / 8) + 1) * 8
+	return roundStackUsage(largestOffset)
+}
+
+func stackUsageFromDirectMemoryAccesses(insns asm.Instructions) int64 {
+	var largestOffset int64
+	for _, ins := range insns {
+		if ins.Offset >= 0 {
+			continue
+		}
+
+		class := ins.OpCode.Class()
+		mode := ins.OpCode.Mode()
+		isStackLoad := class == asm.LdXClass &&
+			(mode == asm.MemMode || mode == asm.MemSXMode) && ins.Src == asm.R10
+		isStackStore := (class == asm.StClass || class == asm.StXClass) &&
+			mode == asm.MemMode && ins.Dst == asm.R10
+		if isStackLoad || isStackStore {
+			largestOffset = max(largestOffset, -int64(ins.Offset))
+		}
 	}
 
-	return largestOffset
+	return roundStackUsage(largestOffset)
+}
+
+func roundStackUsage(usage int64) int64 {
+	if usage%8 != 0 {
+		usage = ((usage / 8) + 1) * 8
+	}
+	return usage
 }
 
 // ProgramDetails returns grouped stack slot usage for a single program.
