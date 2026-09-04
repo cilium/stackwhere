@@ -12,7 +12,10 @@ func main() {
 	}
 }
 
-const jsonFlagName = "json"
+const (
+	jsonFlagName    = "json"
+	dwarvesFlagName = "dwarf"
+)
 
 func jsonOutput(cmd *cobra.Command) bool {
 	jsonFlag, err := cmd.Flags().GetBool(jsonFlagName)
@@ -22,6 +25,11 @@ func jsonOutput(cmd *cobra.Command) bool {
 	return jsonFlag
 }
 
+func dwarves(cmd *cobra.Command) []string {
+	dwarves, _ := cmd.Flags().GetStringArray(dwarvesFlagName)
+	return dwarves
+}
+
 func root() *cobra.Command {
 	c := &cobra.Command{
 		Use: "stackwhere",
@@ -29,6 +37,7 @@ func root() *cobra.Command {
 
 	pFlags := c.PersistentFlags()
 	pFlags.BoolP(jsonFlagName, "j", false, "Output in JSON format")
+	pFlags.StringArrayP(dwarvesFlagName, "D", nil, "Explicit DWARF files(s)")
 
 	const primaryGroupID = "primary"
 	c.AddGroup(

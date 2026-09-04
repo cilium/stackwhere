@@ -91,7 +91,7 @@ func TestWebCommandDoesNotAnnounceFailedBind(t *testing.T) {
 }
 
 func TestWebHandlerServesLandingPage(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestWebHandlerServesLandingPage(t *testing.T) {
 }
 
 func TestWebHandlerIncludesInstructionOnlyStackUsage(t *testing.T) {
-	app, err := newWebApp("../../testdata/noinline.o", nil)
+	app, err := newWebApp("../../testdata/noinline.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestWebHandlerIncludesInstructionOnlyStackUsage(t *testing.T) {
 }
 
 func TestWebHandlerServesProgramPage(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestWebHandlerServesProgramPage(t *testing.T) {
 }
 
 func TestWebHandlerServesSourcePage(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestWebHandlerPrefersRelocatedSourcePath(t *testing.T) {
 		t.Fatalf("failed to write expected source file: %v", err)
 	}
 
-	app, err := newWebApp("../../testdata/basic.o", []string{sourceDir})
+	app, err := newWebApp("../../testdata/basic.o", []string{sourceDir}, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestWebHandlerPrefersRelocatedSourcePath(t *testing.T) {
 }
 
 func TestWebHandlerSourcePageNotFound(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestWebHandlerSourcePageNotFound(t *testing.T) {
 }
 
 func TestWebHandlerServesEmbeddedStaticAsset(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestWebHandlerServesEmbeddedStaticAsset(t *testing.T) {
 }
 
 func TestWebHandlerRejectsUnsupportedSourceType(t *testing.T) {
-	app, err := newWebApp("../../testdata/basic.o", nil)
+	app, err := newWebApp("../../testdata/basic.o", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestWebHandlerRejectsSourceTraversal(t *testing.T) {
 		t.Fatalf("failed to create source file outside allowlist: %v", err)
 	}
 
-	app, err := newWebApp("../../testdata/basic.o", []string{allowedDir})
+	app, err := newWebApp("../../testdata/basic.o", []string{allowedDir}, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestWebHandlerRejectsAbsolutePathOutsideSourceDir(t *testing.T) {
 		t.Fatalf("failed to create source file outside allowlist: %v", err)
 	}
 
-	app, err := newWebApp("../../testdata/basic.o", []string{allowedDir})
+	app, err := newWebApp("../../testdata/basic.o", []string{allowedDir}, nil)
 	if err != nil {
 		t.Fatalf("failed to initialize web app: %v", err)
 	}

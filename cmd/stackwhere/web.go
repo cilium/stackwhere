@@ -58,7 +58,7 @@ func webCommand() *cobra.Command {
 func (wc *webCmd) runE(cmd *cobra.Command, args []string) error {
 	collectionPath := args[0]
 
-	app, err := newWebApp(collectionPath, *wc.flagSourceDirs)
+	app, err := newWebApp(collectionPath, *wc.flagSourceDirs, dwarves(cmd))
 	if err != nil {
 		return err
 	}
@@ -158,8 +158,8 @@ const (
 
 var errSourceFileFound = errors.New("source file found")
 
-func newWebApp(collectionPath string, sourceDirs []string) (*webApp, error) {
-	analyzer, err := stackview.NewAnalyzer(collectionPath)
+func newWebApp(collectionPath string, sourceDirs []string, dwarves []string) (*webApp, error) {
+	analyzer, err := stackview.NewAnalyzer(collectionPath, dwarves)
 	if err != nil {
 		return nil, err
 	}
