@@ -15,14 +15,14 @@ In BPF, every byte of stack usage counts, the verifier limits us to 512 bytes of
 #### Example on Linux AMD64
 
 ```bash
-wget https://github.com/cilium/stackwhere/releases/download/v0.3.2/stackwhere_0.3.2_linux_amd64.tar.gz
+wget https://github.com/cilium/stackwhere/releases/download/v0.4.0/stackwhere_0.4.0_linux_amd64.tar.gz
 
 # Optional, verify checksum
-wget https://github.com/cilium/stackwhere/releases/download/v0.3.2/stackwhere_0.3.2_checksums.txt
-sha256sum -c stackwhere_0.3.2_checksums.txt --ignore-missing
-# Should say: stackwhere_0.3.2_linux_amd64.tar.gz: OK
+wget https://github.com/cilium/stackwhere/releases/download/v0.4.0/stackwhere_0.4.0_checksums.txt
+sha256sum -c stackwhere_0.4.0_checksums.txt --ignore-missing
+# Should say: stackwhere_0.4.0_linux_amd64.tar.gz: OK
 
-tar -xzf stackwhere_0.3.2_linux_amd64.tar.gz
+tar -xzf stackwhere_0.4.0_linux_amd64.tar.gz
 sudo mv stackwhere /usr/bin/stackwhere
 ```
 
@@ -34,6 +34,35 @@ Install the latest version by running `go install github.com/cilium/stackwhere/c
 
 Stackwhere uses DWARF debug info, which requires the .o files to be created with the `-g` compiler option and to not
 be stripped.
+
+### Inspecting in a web UI
+
+The `web` (alias `w`) sub-command starts a local web server for exploring stack usage interactively.
+
+```
+$ stackwhere web {path to .o}
+Serving stackwhere web UI on http://127.0.0.1:8080
+```
+
+Use `--source-dir` to limit which directories can be read by the `/source` endpoint. The flag is repeatable.
+
+```
+$ stackwhere web {path to .o} --source-dir ./bpf --source-dir ./common
+```
+
+If no `--source-dir` is set, stackwhere defaults to the directory containing the collection file.
+
+
+The web UI shows all programs in a collection and their max stack sizes. 
+![](assets/web-per-program-usage.png)
+
+Each program's individual stack usage can be explored. It will show the variable names per stack slot as found in the DWARF debug info, a listing of the program instructions assembly, and the variable lifetime graph.
+
+The variable lifetime graph has the stack slot offset on the left, instruction number on the top, each bar represents the lifetime of a "variable". Black dots are writes to a stack slot, white dots are reads from a stack slot, pressing on them will indicate the instruction in the instruction view.
+![](assets/web-program-stack-usage.png)
+
+Pressing on the line info in the instruction view will open the source code view at the location of the line.
+![](assets/web-program-sources.png)
 
 ### Inspecting collections
 
@@ -77,23 +106,6 @@ So local variables and function arguments of inlined functions can appear in the
 Multiple variables can share the same offset when their lifetimes do not overlap, so stack slots are reused by the compiler when it thinks its safely able to. Stackwhere groups variables at the same offsets together and outputs them from low offsets (the "bottom" of the stack) to high offsets ("top" top of the stack).
 
 Spilling of unamed values, such as intermediate values of an expression does not appear in this output (at this this). Such spilled values can share stack slots with named variables and may use gaps in offsets that are shown. 
-
-### Inspecting in a web UI
-
-The `web` (alias `w`) sub-command starts a local web server for exploring stack usage interactively.
-
-```
-$ stackwhere web {path to .o}
-Serving stackwhere web UI on http://127.0.0.1:8080
-```
-
-Use `--source-dir` to limit which directories can be read by the `/source` endpoint. The flag is repeatable.
-
-```
-$ stackwhere web {path to .o} --source-dir ./bpf --source-dir ./common
-```
-
-If no `--source-dir` is set, stackwhere defaults to the directory containing the collection file.
 
 ## Tips for reducing stack usage
 
