@@ -19,6 +19,7 @@ docker:
 
 TARGETS := \
 	basic \
+	declaration \
 	equal \
 	noinline \
 	spill

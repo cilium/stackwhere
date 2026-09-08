@@ -195,7 +195,7 @@ func (a *Analyzer) ProgramDetails(functionName string) ([][]SlotUsage, error) {
 
 	subProgsDwarf := a.subProgsDwarf()
 	subProgDwarfIdx := slices.IndexFunc(subProgsDwarf, func(n *dbgdwarf.Node) bool {
-		return n.Name() == functionName
+		return isBPFProgram(n) && n.Name() == functionName
 	})
 	if subProgDwarfIdx == -1 {
 		return nil, fmt.Errorf("function %q not found in DWARF data", functionName)
