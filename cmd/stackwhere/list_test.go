@@ -51,6 +51,25 @@ func TestProgramDetailsFromDWARF(t *testing.T) {
 	}
 }
 
+func TestListProgramPrefersDefinitionOverDeclaration(t *testing.T) {
+	cmd := root()
+	cmd.SetArgs([]string{
+		"list", "../../testdata/basic.o", "cil_entry",
+		"-D", "../../testdata/declaration.o",
+		"-D", "../../testdata/basic.o",
+	})
+
+	var stdout bytes.Buffer
+	cmd.SetOut(&stdout)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("list command failed: %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "32 - a @") {
+		t.Fatalf("expected details from the function definition, got %q", got)
+	}
+}
+
 func TestProgramDetailsFromInsns(t *testing.T) {
 	analyzer, err := stackview.NewAnalyzer("../../testdata/spill.o", nil)
 	if err != nil {
