@@ -98,6 +98,35 @@ func TestVisitorRevisitsLoopHeaderWhenStateChanges(t *testing.T) {
 	}
 }
 
+func TestVisitorTracksCsumDiffStackReads(t *testing.T) {
+	insns := asm.Instructions{
+		asm.Mov.Imm(asm.R0, 1).WithSymbol("prog"),
+		asm.StoreMem(asm.R10, -8, asm.R0, asm.DWord),
+		asm.StoreMem(asm.R10, -16, asm.R0, asm.DWord),
+		asm.StoreMem(asm.R10, -24, asm.R0, asm.DWord),
+		asm.StoreMem(asm.R10, -32, asm.R0, asm.DWord),
+		asm.Mov.Reg(asm.R1, asm.R10),
+		asm.Add.Imm(asm.R1, -16),
+		asm.Mov.Imm(asm.R2, 16),
+		asm.Mov.Reg(asm.R3, asm.R10),
+		asm.Add.Imm(asm.R3, -32),
+		asm.Mov.Imm(asm.R4, 16),
+		asm.FnCsumDiff.Call(),
+		asm.Return(),
+	}
+
+	v := runVisitor(t, insns)
+
+	if len(v.reads) != 4 {
+		t.Fatalf("expected four stack reads from csum diff, got reads=%v", v.reads)
+	}
+	for _, offset := range []int16{-32, -24, -16, -8} {
+		if !hasRW(v.reads, offset, 11) {
+			t.Fatalf("expected csum diff read at raw ins 11 for stack offset %d, got reads=%v", offset, v.reads)
+		}
+	}
+}
+
 func TestLifetimeAddSortsAndUpdatesIntervals(t *testing.T) {
 	lt := &Lifetime{}
 

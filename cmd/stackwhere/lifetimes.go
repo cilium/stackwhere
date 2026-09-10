@@ -1136,7 +1136,7 @@ var callArgMap = map[asm.BuiltinFunc][]callArgPair{
 	asm.FnPerfEventOutput:            {PSPair(asm.R4, asm.R5, Read)},
 	asm.FnSkbLoadBytes:               {PSPair(asm.R3, asm.R4, Write)},
 	asm.FnGetStackid:                 {},
-	asm.FnCsumDiff:                   {},
+	asm.FnCsumDiff:                   {PSPair(asm.R1, asm.R2, Read), PSPair(asm.R3, asm.R4, Read)},
 	asm.FnSkbGetTunnelOpt:            {PSPair(asm.R2, asm.R3, Write)},
 	asm.FnSkbSetTunnelOpt:            {PSPair(asm.R2, asm.R3, Read)},
 	asm.FnSkbChangeProto:             {},
