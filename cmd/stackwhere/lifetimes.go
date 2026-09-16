@@ -629,7 +629,7 @@ func (v *visitor) transferBlock(block *analyze.Block, state state) state {
 			}
 
 			off := roundToSlot(ins.Offset)
-			size := int16(ins.OpCode.Size())
+			size := int16(ins.OpCode.Size().Sizeof())
 			v.writeStack(off, size, &state, block, i)
 
 			// Track spilled value for later loads. Partial writes invalidate any known value.

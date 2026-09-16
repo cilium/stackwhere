@@ -127,6 +127,51 @@ func TestVisitorTracksCsumDiffStackReads(t *testing.T) {
 	}
 }
 
+func TestVisitorStackStoreWidths(t *testing.T) {
+	for _, size := range []asm.Size{asm.Byte, asm.Half, asm.Word, asm.DWord} {
+		stores := map[string]asm.Instruction{
+			"register": asm.StoreMem(asm.R10, -8, asm.R1, size),
+		}
+		if size != asm.DWord {
+			stores["immediate"] = asm.StoreImm(asm.R10, -8, 42, size)
+		}
+		for name, store := range stores {
+			t.Run(size.String()+"/"+name, func(t *testing.T) {
+				insns := asm.Instructions{
+					asm.Mov.Imm(asm.R1, 42).WithSymbol("prog"),
+					asm.StoreMem(asm.R10, -8, asm.R1, asm.DWord),
+					store,
+					asm.LoadMem(asm.R0, asm.R10, -8, asm.DWord),
+					asm.Return(),
+				}
+				v := runVisitor(t, insns)
+				wantWrites := 1
+				wantStart := asm.RawInstructionOffset(1)
+				if size == asm.DWord {
+					wantWrites = 2
+					wantStart = 2
+				}
+				if len(v.writes) != wantWrites {
+					t.Fatalf("got %d lifetime-starting writes, want %d", len(v.writes), wantWrites)
+				}
+				for _, state := range v.outStates {
+					if got := state.stack[-8].spilled.hasScalar; got != (size == asm.DWord) {
+						t.Errorf("known spilled scalar = %v, size %s", got, size)
+					}
+				}
+				blocks := analyze.Blocks{v.writes[0].Block}
+				lifetimes := computeStackLifetimes(blocks, insns, v.reachableWrites, v.reads)
+				if len(lifetimes) != 1 || len(lifetimes[0].lifetime.Intervals) != 1 {
+					t.Fatalf("expected one lifetime, got %v", lifetimes)
+				}
+				if got := lifetimes[0].lifetime.Intervals[0]; got.Start != wantStart || got.End != 3 {
+					t.Errorf("lifetime = %v, want [%d; 3]", got, wantStart)
+				}
+			})
+		}
+	}
+}
+
 func TestLifetimeAddSortsAndUpdatesIntervals(t *testing.T) {
 	lt := &Lifetime{}
 
