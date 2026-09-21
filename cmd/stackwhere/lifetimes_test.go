@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/cilium/ebpf/asm"
@@ -124,6 +125,58 @@ func TestVisitorTracksCsumDiffStackReads(t *testing.T) {
 		if !hasRW(v.reads, offset, 11) {
 			t.Fatalf("expected csum diff read at raw ins 11 for stack offset %d, got reads=%v", offset, v.reads)
 		}
+	}
+}
+
+func TestVisitorTracksUnalignedHelperBuffer(t *testing.T) {
+	insns := asm.Instructions{
+		asm.Mov.Reg(asm.R3, asm.R10).WithSymbol("prog"),
+		asm.Add.Imm(asm.R3, -12),
+		asm.Mov.Imm(asm.R2, 0),
+		asm.Mov.Imm(asm.R4, 8),
+		asm.FnSkbLoadBytes.Call(),
+		asm.LoadMem(asm.R1, asm.R10, -12, asm.Byte),
+		asm.LoadMem(asm.R0, asm.R10, -5, asm.Byte),
+		asm.Return(),
+	}
+
+	v := runVisitor(t, insns)
+
+	if v.inaccurate {
+		t.Fatal("expected analysis to remain accurate")
+	}
+	for _, offset := range []int16{-16, -8} {
+		if !hasRW(v.writes, offset, 4) {
+			t.Errorf("expected helper write at raw ins 4 for stack offset %d, got writes=%v", offset, v.writes)
+		}
+	}
+	if !hasRW(v.reads, -16, 5) {
+		t.Errorf("expected read at raw ins 5 for stack offset -16, got reads=%v", v.reads)
+	}
+	if !hasRW(v.reads, -8, 6) {
+		t.Errorf("expected read at raw ins 6 for stack offset -8, got reads=%v", v.reads)
+	}
+}
+
+func TestSplitStackRange(t *testing.T) {
+	tests := []struct {
+		name   string
+		offset int16
+		size   int64
+		want   []stackSlotRange
+	}{
+		{name: "aligned", offset: -16, size: 8, want: []stackSlotRange{{offset: -16, size: 8}}},
+		{name: "two partial slots", offset: -12, size: 8, want: []stackSlotRange{{offset: -16, size: 4}, {offset: -8, size: 4}}},
+		{name: "two edge bytes", offset: -9, size: 2, want: []stackSlotRange{{offset: -16, size: 1}, {offset: -8, size: 1}}},
+		{name: "zero size", offset: -8, size: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := splitStackRange(tt.offset, tt.size); !slices.Equal(got, tt.want) {
+				t.Fatalf("splitStackRange(%d, %d) = %v, want %v", tt.offset, tt.size, got, tt.want)
+			}
+		})
 	}
 }
 

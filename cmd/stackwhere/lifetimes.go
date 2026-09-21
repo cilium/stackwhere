@@ -440,6 +440,31 @@ func bytesToSlots(size int16) int16 {
 	return ((size + 7) &^ 7) / 8
 }
 
+type stackSlotRange struct {
+	offset int16
+	size   int16
+}
+
+func splitStackRange(offset int16, size int64) []stackSlotRange {
+	if size <= 0 {
+		return nil
+	}
+
+	start := int64(offset)
+	end := start + size
+	var slots []stackSlotRange
+	for slotStart := int64(roundToSlot(offset)); slotStart < end; slotStart += 8 {
+		overlapStart := max(start, slotStart)
+		overlapEnd := min(end, slotStart+8)
+		slots = append(slots, stackSlotRange{
+			offset: int16(slotStart),
+			size:   int16(overlapEnd - overlapStart),
+		})
+	}
+
+	return slots
+}
+
 type rw struct {
 	Offset int16
 	Block  *analyze.Block
@@ -1062,16 +1087,13 @@ func (v *visitor) handleCall(s *state, curBlock *analyze.Block, insIdx int) {
 		}
 
 		if argPair.rw&Read != 0 {
-			slots := bytesToSlots(int16(size))
-			for i := range slots {
-				v.readStack(*s, roundToSlot(ptrState.fpOff)+int16(i*8), curBlock, insIdx)
+			for _, slot := range splitStackRange(ptrState.fpOff, size) {
+				v.readStack(*s, slot.offset, curBlock, insIdx)
 			}
 		}
 		if argPair.rw&Write != 0 {
-			slots := bytesToSlots(int16(size))
-			for i := range slots {
-				off := roundToSlot(ptrState.fpOff) + int16(i*8)
-				v.writeStack(off, int16(size), s, curBlock, insIdx)
+			for _, slot := range splitStackRange(ptrState.fpOff, size) {
+				v.writeStack(slot.offset, slot.size, s, curBlock, insIdx)
 			}
 		}
 	}
